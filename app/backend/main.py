@@ -12,8 +12,10 @@ from pdf2image import convert_from_path
 from playhouse.migrate import *
 from utilities import *
 
-secretKey = "R]5~iyq'@,ysP1!FuP#ove,h!rY#:dp74QDYh!o1G*1O4ieKGSp7&V'fE<b[MALwp"
-s = TimestampSigner(secretKey)
+
+load_dotenv()
+
+s = TimestampSigner(os.getenv("secretKey"))
 app = Flask(__name__)
 Compress(app)
 api = Api(app)
@@ -22,25 +24,6 @@ UPLOAD_FOLDER = API_DIR + '/upload'
 CACHE_FOLDER = UPLOAD_FOLDER + '/cache'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['CACHE_FOLDER'] = CACHE_FOLDER
-
-# run database migrators here
-@app.before_first_request
-def before_first_request():
-    db.connect()
-    migrator = None
-    if type(db) is SqliteDatabase:
-        migrator = SqliteMigrator(db)
-    if type(db) is MySQLDatabase:
-        migrator = MySQLMigrator(db)
-    if 'privacy_id' not in [c.name for c in db.get_columns('person')]:
-        print("Adding Person.privacy field...")
-        pp = Person.privacy
-        pp.default = Privacy.get(Privacy.level == 'admin')
-        migrate(migrator.add_column('person', 'privacy_id', pp))
-    else:
-        print("Person.privacy migration already done")
-    db.close()
-
 
 # opens db connection before request
 @app.before_request

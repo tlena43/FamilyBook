@@ -1,7 +1,13 @@
 from peewee import *
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 db = SqliteDatabase("project.db")
-# db = MySQLDatabase('kischook', host='localhost', user='kischook', password='YAN_>&Z^:#|k/op[N_2[#)<_p,>Nw:8eK6BqGMx{vSKn6!J_/Imewe<y#6*')
+#db = MySQLDatabase("project", user=os.getenv("user"), password=os.getenv("pass"), host=os.getenv("host"), port=os.getenv("port"))
+
+
 
 class BaseModel(Model):
     class Meta:
