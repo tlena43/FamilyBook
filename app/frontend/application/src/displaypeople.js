@@ -1,63 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import './index.css';
-import {fetchPeople} from "./formfunctions.js"
-import Search from './search';
+import { fetchPeople } from './formfunctions';
+import Search from './search'
+import { useAuth } from "./authContext.js";
 
-//person search
-function ProcessPeopleAddContent({ personPromiseResolve, loginKey, promiseReject }) {
-  const [errorPeople, setErrorPeople] = useState(null);
+function ProcessPeople() {
+  const { loginKey } = useAuth();
+  const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(true);
-  async function getPeople() {
-    try {
-      setLoadingPeople(true);
-      const valuePeople = await fetchPeople(loginKey);
-      if(valuePeople){
-        personPromiseResolve(valuePeople);
-      }
-      else{
-        promiseReject();
-      }
+  const [errorPeople, setErrorPeople] = useState(null);
 
-
-    } catch (e) {
-      setErrorPeople(e);
-    } finally {
-      setLoadingPeople(false);
-    }
-  }
   useEffect(() => {
-    getPeople();
-  }, []);
+    if(!loginKey) return;
+    let cancelled = false;
 
-  if (errorPeople) return "Failed to load resource A";
-  return loadingPeople ? <div className="loader" >
-  <div className='loader-bar' ></div></div>  : <div></div>
+    (async () => {
+      try {
+        setLoadingPeople(true);
+        setErrorPeople(null);
+
+        const valuePeople = await fetchPeople(loginKey);
+        if (cancelled) return;
+
+        setPeople(valuePeople ?? []);
+      } catch (e) {
+        if (cancelled) return;
+        setErrorPeople(e);
+      } finally {
+        if (!cancelled) setLoadingPeople(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loginKey]);
+
+  return (
+    <div>
+      <Search details={people} cardType="person" isLoading={loadingPeople} error={errorPeople} />
+    </div>
+  );
 }
 
-//start display people functions
-const DisplayPeople = ({loginKey}) => {
-    return(
-      <div id="people-list">
-        <ProcessPeople loginKey={loginKey}/>
-      </div>
-    )
-  }
-  
-  
-  function ProcessPeople({loginKey}){
-    var personPromiseResolve, personPromiseReject;
-    const personPromise = new Promise(function (resolve, reject) {
-      personPromiseResolve = resolve;
-      personPromiseReject = reject;
-    });  
-    return(  
-      <div >
-           <ProcessPeopleAddContent personPromiseResolve={personPromiseResolve} loginKey={loginKey} promiseReject={personPromiseReject}/>
-            <Search details={personPromise} cardType="person"/>
-            
-      </div>
-    )
-  }
-
-  export default DisplayPeople
-
+export default ProcessPeople;

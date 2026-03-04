@@ -1,10 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import './index.css';
-function ContentCard  ({content})  {
-    return(
-      <div className='content-card'>
-          <p>{content.title}</p>
-        <img src={api + "upload/" + content.fileName}/>
-      </div>
-    )
-  }
+import "./index.css";
+import { api } from "./global.js";
+
+function ContentCard({ content }) {
+  if (!content) return null;
+
+  const imageSrc = content.fileName
+    ? api + "upload/" + content.fileName
+    : "/placeholder-image.png"; // fallback if needed
+
+  return (
+    <div className="content-card">
+      <p>{content.title ?? "Untitled"}</p>
+      <img
+        src={imageSrc}
+        alt={content.title ?? "Content preview"}
+      />
+    </div>
+  );
+}
+
+export default ContentCard;

@@ -1,78 +1,72 @@
-import React, { useState, useEffect } from 'react';
-import './index.css';
-import {api} from "./global.js"
-import Search from './search';
+import React, { useEffect, useState } from "react";
+import "./index.css";
+import { apiJson } from "./global.js";
+import Search from "./search";
+import { useAuth } from "./authContext.js";
 
-
-function ProcessDisplayContent({ promiseResolve, loginKey, promiseReject }) {
-  const [errorContent, setErrorContent] = useState(null);
-  const [loadingContent, setLoadingContent] = useState(true);
-  async function getContent() {
-    try {
-      setLoadingContent(true);
-      const valueContent = await fetchContentOverview(loginKey);
-      if(valueContent){
-        promiseResolve(valueContent);
-      }
-      else{
-        promiseReject();
-      }
-
-    } catch (e) {
-      setErrorContent(e);
-    } finally {
-      setLoadingContent(false);
-    }
-  }
-  useEffect(() => {
-    getContent();
-  }, []);
-
-  if (errorContent) return "Failed to load resource";
-  return loadingContent ? <div className="loader" >
-  <div className='loader-bar' ></div></div> : ""
-}
-
-
-
-
-
-function fetchContentOverview(loginKey){
-  return new Promise(resolve => 
-    fetch(api + "content",{
-      method: "GET",
-      headers:{
-        "X-api-key" : loginKey
-      }
-    })
-    .then(response => response.json())
-    .then(data => {resolve(data["content"])
-    }))
-}
-
-function ProcessContent({loginKey}){
-  var contentPromiseResolve, contentPromiseReject;
-  const contentPromise = new Promise(function (resolve, reject) {
-    contentPromiseResolve = resolve;
-    contentPromiseReject = reject;
+async function fetchContentOverview(loginKey) {
+  const data = await apiJson("content", {
+    loginKey,
+    method: "GET",
   });
 
-
-    return (
-    <div>
-      <ProcessDisplayContent promiseResolve={contentPromiseResolve} promiseReject = {contentPromiseReject} loginKey={loginKey} />
-      <Search details={contentPromise} cardType="content"/>
-    </div> )
+  return data.content;
 }
 
-//start display content functions
-const DisplayContent = ({loginKey}) => {
-    return(
-      <div >
-        <ProcessContent loginKey = {loginKey}/>
-      </div>
-    )
-  }
-  //end display content functions
+function ProcessContent() {
+  const { loginKey } = useAuth();
 
-  export default DisplayContent
+  const [content, setContent] = useState([]);
+  const [loadingContent, setLoadingContent] = useState(true);
+  const [errorContent, setErrorContent] = useState(null);
+
+  useEffect(() => {
+    if (!loginKey) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoadingContent(true);
+        setErrorContent(null);
+
+        const valueContent = await fetchContentOverview(loginKey);
+        if (cancelled) return;
+
+        setContent(valueContent ?? []);
+      } catch (e) {
+        if (!cancelled) setErrorContent(e);
+      } finally {
+        if (!cancelled) setLoadingContent(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loginKey]);
+
+  return (
+    <div>
+      {/* Search handles loading/error display now */}
+      <Search
+        details={content}
+        cardType="content"
+        isLoading={loadingContent}
+        error={errorContent}
+      />
+    </div>
+  );
+}
+
+// start display content functions
+const DisplayContent = () => {
+  return (
+    <div>
+      <ProcessContent />
+    </div>
+  );
+};
+// end display content functions
+
+export default DisplayContent;

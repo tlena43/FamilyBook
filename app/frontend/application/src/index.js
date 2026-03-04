@@ -1,86 +1,87 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
+import React, { useState, useEffect, lazy, Suspense } from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Link,
-  useLocation
+  useLocation,
+  useNavigate,
 } from "react-router-dom";
-import {api} from "./global.js"
-import { faBars} from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { apiFetch } from "./global.js";
+import { faBars } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { AuthProvider, useAuth } from "./authContext.js";
 
 const LoginPage = lazy(() => import("./login"));
-const PersonForm = lazy(() => import("./personform"))
-const ContentForm = lazy(() => import("./contentform"))
-const DisplayContent = lazy(() => import("./displaycontent"))
-const DisplayPeople = lazy(() => import("./displaypeople"))
-const IndividualPerson = lazy(() => import("./individualperson"))
-const IndividualContent = lazy(() => import("./individualcontent"))
+const PersonForm = lazy(() => import("./personform"));
+const ContentForm = lazy(() => import("./contentform"));
+const DisplayContent = lazy(() => import("./displaycontent"));
+const DisplayPeople = lazy(() => import("./displaypeople"));
+const IndividualPerson = lazy(() => import("./individualperson"));
+const IndividualContent = lazy(() => import("./individualcontent"));
 
-
-
-
-
-//start navigation functions
-function NavItem({privacyLevel}){
-  function navClick(){
-    let nav = document.getElementById("nav-list-style")
-    nav.className = ""
-  }
+// start navigation functions
+function NavItem({ privacyLevel, menuOpen, closeMenu }) {
   let items;
-  if(privacyLevel !== "extended"){
-    items = [{name: "Add Person", key: 1, route: "person/new"},
-   {name: "People", key: 2, route: "person"},
-  {name: "Add Content", key: 3, route: "content/new"},
-  {name: "View Content", key: 4, route: "content"},
-{name: "Log out", key: 5, route: "logout"}]
-  }
 
-  else{
+  if (privacyLevel !== "extended") {
     items = [
-    {name: "People", key: 2, route: "person"},
-   {name: "View Content", key: 4, route: "content"},
- {name: "Log out", key: 5, route: "logout"}]
+      { name: "Add Person", key: 1, route: "person/new" },
+      { name: "People", key: 2, route: "person" },
+      { name: "Add Content", key: 3, route: "content/new" },
+      { name: "View Content", key: 4, route: "content" },
+      { name: "Log out", key: 5, route: "logout" },
+    ];
+  } else {
+    items = [
+      { name: "People", key: 2, route: "person" },
+      { name: "View Content", key: 4, route: "content" },
+      { name: "Log out", key: 5, route: "logout" },
+    ];
   }
 
+  const navItems = items.map((item) => (
+    <Link to={"/" + item.route} className="nav-item" key={item.key} onClick={closeMenu}>
+      {item.name}
+    </Link>
+  ));
 
-  let navItems = items.map((item) =>
-<Link to={"/" + item.route}  className="nav-item" href="#top" id={item.name} key={item.key} onClick={navClick}>{item.name}</Link>
-  );
-  return(
-    <div id="nav-list-style">
-    <div id="nav-items">{navItems}</div>
-    <div className="greyed-out"></div>
-
+  return (
+    <div id="nav-list-style" className={menuOpen ? "mobile-nav" : ""}>
+      <div id="nav-items">{navItems}</div>
+      <div className="greyed-out" onClick={closeMenu}></div>
     </div>
-  )}
-
-function Header({privacyLevel}){
-  function menuClick(){
-    let nav = document.getElementById("nav-list-style")
-
-    if(nav.className === ""){
-      nav.className += "mobile-nav"
-    }
-    else{
-      nav.className = ""
-    }
-  }
-  return(
-    <div id='head-wrapper'><div id='head'>
-      <h1 id='header-title-container'>Kischook Family</h1>
-      <FontAwesomeIcon icon={faBars} onClick={menuClick}/>
-      <NavItem privacyLevel={privacyLevel} /></div></div>
-    
-  )
+  );
 }
-//end naviagtion functions
 
-//start sitewide building
-export default function ScrollToTop() {
+function Header() {
+  const { privacyLevel } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function toggleMenu() {
+    setMenuOpen((prev) => !prev);
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
+  return (
+    <div id="head-wrapper">
+      <div id="head">
+        <h1 id="header-title-container">Kischook Family</h1>
+        <FontAwesomeIcon icon={faBars} onClick={toggleMenu} />
+        <NavItem privacyLevel={privacyLevel} menuOpen={menuOpen} closeMenu={closeMenu} />
+      </div>
+    </div>
+  );
+}
+// end navigation functions
+
+// start sitewide building
+function ScrollToTop() {
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -90,125 +91,130 @@ export default function ScrollToTop() {
   return null;
 }
 
-function LogOut(){
-  localStorage.clear()
-  window.location = "/login"
+// Logs out and redirects
+function LogOut() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  useEffect(() => {
+    logout();
+    navigate("/login", { replace: true });
+  }, [logout, navigate]);
+
+  return null;
 }
 
-function PageState({setLoginKey, loginKey, privacyLevel, setPrivacyLevel}){
-  if(loginKey == null){
-    return(
+function PageState() {
+  const { loginKey, privacyLevel } = useAuth();
+
+  if (loginKey == null) {
+    return (
       <Suspense fallback={<div>Loading...</div>}>
-      <Routes>    
-        <Route path="*" element={<LoginPage setLoginKey={setLoginKey} setPrivacyLevel={setPrivacyLevel}/>}/>
-      </Routes>
+        <Routes>
+          <Route path="*" element={<LoginPage />} />
+        </Routes>
       </Suspense>
-    )
+    );
   }
 
-  else if(privacyLevel === "extended"){
-    console.log(privacyLevel)
-    return(
+  // logged in
+  if (privacyLevel === "extended") {
+    return (
       <div>
-      <Header privacyLevel={privacyLevel}/>
-      <div id='page-body'>
-      <Suspense fallback={<div>Loading...</div>}>
-      <Routes >
-        <Route path="/person" element={<DisplayPeople loginKey={loginKey}/>}/>
-        <Route path="/person/:id" element={<IndividualPerson loginKey={loginKey} admin={false}/>}/>
-        <Route path="/content" element={<DisplayContent loginKey={loginKey}/>}/>
-        <Route path="/" element={<DisplayContent loginKey={loginKey}/>}/>
-        <Route path="/content/:id" element={<IndividualContent loginKey={loginKey} admin={false}/>}/>
-        <Route path="/login" element={<LoginPage setLoginKey={setLoginKey}/>}/>
-        <Route path="/logout" element={<LogOut/>}/>
-        <Route path='*' element={<NotFound/>}/>
-      </Routes>
-      </Suspense>
+        <Header />
+        <div id="page-body">
+          <Suspense fallback={<div>Loading...</div>}>
+            <Routes>
+              <Route path="/person" element={<DisplayPeople admin={false} />} />
+              <Route path="/person/:id" element={<IndividualPerson admin={false} />} />
+              <Route path="/content" element={<DisplayContent />} />
+              <Route path="/" element={<DisplayContent />} />
+              <Route path="/content/:id" element={<IndividualContent admin={false} />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/logout" element={<LogOut />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </div>
       </div>
-     </div>
-    )
+    );
   }
 
-  return(
+  // admin / non-extended
+  return (
     <div>
-    <Header privacyLevel={privacyLevel} />
-    <div id='page-body'>
-    <Suspense fallback={<div>Loading...</div>}>
-    <Routes >
-      <Route exact path="/person/new" element={<PersonForm loginKey={loginKey}/>}/>
-      <Route path="/person" element={<DisplayPeople loginKey={loginKey}/>}/>
-      <Route path="/person/edit/:id" element={<PersonForm loginKey={loginKey}/>}/>
-      <Route path="/person/:id" element={<IndividualPerson loginKey={loginKey} admin={true}/>}/>
-      <Route path="/content/new" element={<ContentForm loginKey={loginKey}/>}/>
-      <Route path="/content/edit/:id" element={<ContentForm loginKey={loginKey}/>}/>
-      <Route path="/content" element={<DisplayContent loginKey={loginKey}/>}/>
-      <Route path="/" element={<DisplayContent loginKey={loginKey}/>}/>
-      <Route path="/content/:id" element={<IndividualContent loginKey={loginKey}  admin={true}/>}/>
-      <Route path="/login" element={<LoginPage setLoginKey={setLoginKey}/>}/>
-      <Route path="/logout" element={<LogOut/>}/>
-      <Route path='*' element={<NotFound/>}/>
-    </Routes>
-    </Suspense>
+      <Header />
+      <div id="page-body">
+        <Suspense fallback={<div>Loading...</div>}>
+          <Routes>
+            <Route path="/person/new" element={<PersonForm />} />
+            <Route path="/person" element={<DisplayPeople admin={true} />} />
+            <Route path="/person/edit/:id" element={<PersonForm />} />
+            <Route path="/person/:id" element={<IndividualPerson admin={true} />} />
+            <Route path="/content/new" element={<ContentForm />} />
+            <Route path="/content/edit/:id" element={<ContentForm />} />
+            <Route path="/content" element={<DisplayContent />} />
+            <Route path="/" element={<DisplayContent />} />
+            <Route path="/content/:id" element={<IndividualContent admin={true} />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/logout" element={<LogOut />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </div>
     </div>
-   </div>
-  )
-
+  );
 }
 
-
-function NotFound(){
-  return(
+function NotFound() {
+  return (
     <div>
       <h1>404</h1>
       <h1>The page you were looking for doesn't exist</h1>
     </div>
-  )
+  );
 }
 
-function Main(){
-  const [loginKey, setLoginKey] = useState(localStorage.getItem("key"))
-  const [privacyLevel, setPrivacyLevel] = useState(localStorage.getItem("privacyLevel"))
+function LoginCheck() {
+  const { loginKey, logout } = useAuth();
 
-  if(loginKey != null){
-    fetch(api + "loginCheck",{
-      method: "GET",
-      headers:{
-        "Content-Type" : "application/json",
-        "X-api-key" : loginKey
+  useEffect(() => {
+    if (loginKey == null) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await apiFetch("loginCheck", { loginKey, method: "GET" });
+      } catch (e) {
+        if (!cancelled) logout();
       }
-    })
-    .then(response => {
-      if(!response.ok){
-        setLoginKey(null)
-        setPrivacyLevel(null)
-        localStorage.clear()
-      }
-    })
-    
-    
-  }
+    })();
 
-  // checkStatus(loginKey, setLoginKey)
+    return () => {
+      cancelled = true;
+    };
+  }, [loginKey, logout]);
 
-  return(
+  return null;
+}
+
+function Main() {
+  return (
     <div id="main-page">
       <Router>
-          <ScrollToTop/>
-          <PageState setLoginKey={setLoginKey} loginKey={loginKey} privacyLevel={privacyLevel} setPrivacyLevel={setPrivacyLevel}/>
-        </Router>
+        <ScrollToTop />
+        <LoginCheck />
+        <PageState />
+      </Router>
     </div>
-  )
+  );
 }
 
-
-ReactDOM.render(
+createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <Main/>
-  </React.StrictMode>,
-  document.getElementById('root')
+    <AuthProvider>
+      <Main />
+    </AuthProvider>
+  </React.StrictMode>
 );
-
-
-
-
-

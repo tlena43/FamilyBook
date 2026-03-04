@@ -1,68 +1,83 @@
-import {unpackDate} from "./formfunctions.js"
-import {api} from "./global.js"
-
+import { unpackDate } from "./formfunctions.js";
+import { api } from "./global.js";
 
 function getCacheFilename(filename) {
-    var fileParts = filename.split('.')
-    var cacheFilename = fileParts.slice(0, -1).join('.')
-    cacheFilename += '_' + fileParts[fileParts.length - 1] + '.jpg'
-    return cacheFilename
+  const fileParts = filename.split(".");
+  let cacheFilename = fileParts.slice(0, -1).join(".");
+  cacheFilename += "_" + fileParts[fileParts.length - 1] + ".jpg";
+  return cacheFilename;
+}
+
+export class Person {
+  constructor(personJSON) {
+    // defensive defaults so this doesn't explode if a field is missing
+    const p = personJSON ?? {};
+
+    this.id = p.id;
+    this.firstName = p.firstName ?? "";
+    this.middleName = p.middleName ?? "";
+    this.lastName = p.lastName ?? "";
+
+    this.birthday =
+      p.birthDay && p.birthDay !== "not_allowed"
+        ? unpackDate(new Date(p.birthDay), p.birthDateUnknowns)
+        : "";
+
+    // default profile image if no file
+    if (!p.fileName) {
+      this.fileName = "/blank-profile.png";
+      this.cacheFileName = "/blank-profile.png";
+    } else {
+      this.fileName = api + "upload/" + p.fileName;
+      this.cacheFileName = api + "upload/cache/" + getCacheFilename(p.fileName);
+    }
+
+    this.maidenName = p.maidenName ?? "";
+    this.birthPlace = p.birthplace ?? "";
+
+    this.deathDay =
+      p.isDead && p.deathDay
+        ? unpackDate(new Date(p.deathDay), p.deathDateUnknowns)
+        : null;
   }
 
-export class Person{
-    constructor(personJSON){
-        this.id = personJSON.id
-        this.firstName = personJSON.firstName
-        this.middleName = (personJSON.middleName == null ? "" : personJSON.middleName)
-        this.lastName = personJSON.lastName
-        this.birthday = (personJSON.birthDay !== "not_allowed" ? unpackDate(new Date(personJSON.birthDay), personJSON.birthDateUnknowns)  : "")
-        this.fileName = (personJSON.fileName == null ? "/blank-profile.png" :
-                            (api + "upload/" + personJSON.fileName));
-        this.cacheFileName = (personJSON.fileName == null ? "/blank-profile.png" :
-                            (api + "upload/cache/" + getCacheFilename(personJSON.fileName)));
-        this.maidenName = personJSON.maidenName
-        this.birthPlace = personJSON.birthplace
-        this.deathDay = (personJSON.isDead ? unpackDate(new Date(personJSON.deathDay), personJSON.deathDateUnknowns)
-                            : null)
-    }
+  getFullName() {
+    return [this.firstName, this.middleName, this.lastName].filter(Boolean).join(" ");
+  }
 
-    getFullName(){
-        return(this.firstName + " " + this.middleName + " " + this.lastName)
-    }
+  getFirstName() {
+    return this.firstName;
+  }
 
-    getFirstName(){
-        return(this.firstName)
-    }
+  getLastName() {
+    return this.lastName;
+  }
 
-    getLastName(){
-        return(this.lastName)
-    }
+  getBirthday() {
+    return this.birthday;
+  }
 
-    getBirthday(){
-        return(this.birthday)
-    }
+  getFileName() {
+    return this.fileName;
+  }
 
-    getFileName(){
-        return(this.fileName)
-    }
+  getCachedFileName() {
+    return this.cacheFileName;
+  }
 
-    getCachedFileName(){
-        return(this.cacheFileName)
-    }
+  getID() {
+    return this.id;
+  }
 
-    getID(){
-        return(this.id)
-    }
+  getDeathDay() {
+    return this.deathDay;
+  }
 
-    getDeathDay(){
-        return(this.deathDay)
-    }
+  getBirthPlace() {
+    return this.birthPlace;
+  }
 
-    getBirthPlace(){
-        return(this.birthPlace)
-    }
-
-    getMaidenName(){
-        return(this.maidenName)
-    }
+  getMaidenName() {
+    return this.maidenName;
+  }
 }
