@@ -1,409 +1,667 @@
-import bcrypt, hashlib, os
-from flask import Flask, request, abort, send_from_directory, g
-from flask_restful import Resource, Api
-from models import *
-from dateutil import parser
-from itsdangerous import TimestampSigner, SignatureExpired, BadSignature
-from werkzeug.utils import secure_filename
+import os
+import uuid
+from datetime import datetime
 from functools import wraps
-from datetime import datetime, timedelta
+
+import bcrypt
+import peewee
+from dateutil import parser
+from dotenv import load_dotenv
+from flask import Flask, abort, g, redirect, request, send_from_directory
 from flask_compress import Compress
+from flask_restful import Api, Resource
+from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 from pdf2image import convert_from_path
-from playhouse.migrate import *
-from utilities import *
+from werkzeug.utils import secure_filename
+
+from models import (
+    Content,
+    Gender,
+    Person,
+    Person_Content,
+    Privacy,
+    Upload,
+    User,
+    db,
+)
+from utilities import makeCachedUpload
 
 
 load_dotenv()
 
-s = TimestampSigner(os.getenv("secretKey"))
+SECRET_KEY = os.getenv("secretKey")
+if not SECRET_KEY:
+    raise RuntimeError("secretKey environment variable is not set")
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(APP_DIR, "upload")
+CACHE_FOLDER = os.path.join(UPLOAD_FOLDER, "cache")
+
+ALLOWED_UPLOAD_EXTENSIONS = {
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "pdf",
+    "doc",
+    "docx",
+    "odt",
+    "txt",
+}
+
+AUTH_HEADER_NAME = "X-api-key"
+TOKEN_MAX_AGE_SECONDS = 7 * 24 * 3600
+
+ADMIN_PRIVACY_LEVEL = "admin"
+FAMILY_PRIVACY_LEVEL = "family"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(CACHE_FOLDER, exist_ok=True)
+
+signer = TimestampSigner(SECRET_KEY)
+
 app = Flask(__name__)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["CACHE_FOLDER"] = CACHE_FOLDER
+
 Compress(app)
 api = Api(app)
-API_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = API_DIR + '/upload'
-CACHE_FOLDER = UPLOAD_FOLDER + '/cache'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['CACHE_FOLDER'] = CACHE_FOLDER
-
-# opens db connection before request
-@app.before_request
-def beforeRequest():
-    criteria = [ request.is_secure, app.debug, request.headers.get('X-Forwarded-Proto', 'http') == 'https' ]
-    if not any(criteria):
-        url = request.url.replace('http://', 'https://', 1)
-        return redirect(url, code=308)
-    db.connect()
 
 
-# closes db connection after request
-@app.after_request
-def afterRequest(response):
-    response.headers.set("Access-Control-Allow-Origin", "*")
-    response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE")
-    response.headers.set("Access-Control-Allow-Headers", "x-api-key, Content-Type, Content-Length")
-    response.headers.set("Content-Disposition", "attachment")
-    db.close()
-    return response
+def get_admin_privacy():
+    return Privacy.get(Privacy.level == ADMIN_PRIVACY_LEVEL)
 
 
-# whatever this is
-def requireAuth(func):
+def get_family_privacy():
+    return Privacy.get(Privacy.level == FAMILY_PRIVACY_LEVEL)
+
+
+def is_admin(user):
+    return getattr(user.privacy, "level", None) == ADMIN_PRIVACY_LEVEL
+
+
+def is_blank(value):
+    return value in (None, "")
+
+
+def parse_optional_int(value, default=None):
+    if is_blank(value):
+        return default
+    return int(value)
+
+
+def parse_optional_str(value):
+    if is_blank(value):
+        return None
+    return str(value).strip() or None
+
+
+def parse_optional_date(value):
+    if is_blank(value):
+        return None
+    return parser.parse(value)
+
+
+def require_json_body():
+    if not request.is_json:
+        abort(400, description="Request must be JSON.")
+
+
+def require_fields(data, required_fields):
+    missing = [field for field in required_fields if field not in data]
+    if missing:
+        abort(400, description=f"Missing required fields: {', '.join(missing)}")
+
+
+def get_json_or_400(required_fields=None):
+    require_json_body()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        abort(400, description="Invalid JSON body.")
+    if required_fields:
+        require_fields(data, required_fields)
+    return data
+
+
+def get_upload_extension(filename):
+    if "." not in filename:
+        return None
+    return filename.rsplit(".", 1)[1].lower()
+
+
+def build_upload_filename(original_filename):
+    safe_name = secure_filename(original_filename.lower())
+    extension = get_upload_extension(safe_name)
+    if not extension:
+        abort(400, description="Invalid filename.")
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        abort(415, description="Unsupported file type.")
+    return f"{uuid.uuid4().hex}.{extension}"
+
+
+def serialize_person_summary(person, living_birthday_allowed):
+    return {
+        "id": person.id,
+        "firstName": person.firstName,
+        "middleName": person.middleName,
+        "lastName": person.lastName,
+        "birthDay": (
+            str(person.birthDay)
+            if person.isDead or living_birthday_allowed
+            else "not_allowed"
+        ),
+        "birthDateUnknowns": person.birthDateUnknowns,
+        "fileName": person.file.filename if person.file else None,
+    }
+
+
+def serialize_content_summary(content):
+    return {
+        "id": content.id,
+        "title": content.title,
+        "fileName": content.file.filename if content.file else None,
+    }
+
+
+def require_auth(func):
     @wraps(func)
     def inner(*args, **kwargs):
-        apiKey = request.headers.get("X-api-key").encode("utf8")
+        api_key = request.headers.get(AUTH_HEADER_NAME)
+        if not api_key:
+            abort(401)
+
         try:
-            g.user = User.get(User.id == int(s.unsign(apiKey, max_age=7 * 24 * 3600).decode("utf8")))
-        except SignatureExpired:
+            user_id = int(
+                signer.unsign(
+                    api_key.encode("utf8"),
+                    max_age=TOKEN_MAX_AGE_SECONDS,
+                ).decode("utf8")
+            )
+            g.user = User.get(User.id == user_id)
+        except (SignatureExpired, BadSignature, User.DoesNotExist, ValueError):
             abort(401)
-        except BadSignature:
-            abort(401)
-        except User.DoesNotExist:
-            abort(401)
+
         return func(*args, **kwargs)
 
     return inner
 
 
-class checkLoginEndpoint(Resource):
-    @requireAuth
+def require_admin(func):
+    @wraps(func)
+    @require_auth
+    def inner(*args, **kwargs):
+        if not is_admin(g.user):
+            abort(403)
+        return func(*args, **kwargs)
+
+    return inner
+
+
+@app.before_request
+def before_request():
+    criteria = [
+        request.is_secure,
+        app.debug,
+        request.headers.get("X-Forwarded-Proto", "http") == "https",
+    ]
+    if not any(criteria):
+        url = request.url.replace("http://", "https://", 1)
+        return redirect(url, code=308)
+
+    if db.is_closed():
+        db.connect()
+
+
+@app.teardown_request
+def teardown_request(exception=None):
+    if not db.is_closed():
+        db.close()
+
+
+@app.after_request
+def after_request(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, PATCH, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = f"{AUTH_HEADER_NAME}, Content-Type, Content-Length"
+    return response
+
+
+class CheckLoginEndpoint(Resource):
+    @require_auth
     def get(self):
-        return {'privacyLevel': g.user.privacy.level}
+        return {"privacyLevel": g.user.privacy.level}, 200
 
 
-api.add_resource(checkLoginEndpoint, "/loginCheck")
+api.add_resource(CheckLoginEndpoint, "/loginCheck")
 
 
 class UploadEndpoint(Resource):
-    '''Upload an image and returns a unique filename. Retrieve image from filename.'''
-
-    @requireAuth
+    @require_admin
     def post(self):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
-        uFile = request.files['upload']
-        if uFile and '.' in uFile.filename:
-            uFilenameParts = secure_filename(uFile.filename.lower()).rsplit('.', 1)
-            if uFilenameParts[1] in {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'odt', 'txt'}:
-                isUnique = False
-                while not isUnique:
-                    uFilename = '%s.%s' % (
-                        hashlib.md5((uFilenameParts[0] + datetime.utcnow().isoformat()).encode("utf8")).hexdigest(),
-                        uFilenameParts[1])
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], uFilename)
-                    isUnique = not os.path.isfile(filepath)
-                uFile.save(filepath)
-                u = Upload.create(filename=uFilename, timestamp=datetime.utcnow(), owner=g.user)
-                return {'filename': uFilename, 'fileid': u.id}, 201
-            abort(415)
-        abort(400)
+        upload = request.files.get("upload")
+        if not upload or not upload.filename:
+            abort(400, description="No upload provided.")
 
+        unique_filename = build_upload_filename(upload.filename)
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
+
+        upload.save(filepath)
+
+        saved_upload = Upload.create(
+            filename=unique_filename,
+            timestamp=datetime.utcnow(),
+            owner=g.user,
+        )
+
+        return {
+            "filename": unique_filename,
+            "fileid": saved_upload.id,
+        }, 201
 
     def get(self, filename):
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
+    @require_admin
     def delete(self, filename):
         try:
-            file = Upload.get(Upload.filename == filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.delete_instance()
+            upload = Upload.get(Upload.filename == filename)
+        except Upload.DoesNotExist:
+            abort(404)
+
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
+        try:
+            upload.delete_instance()
             if os.path.isfile(filepath):
                 os.remove(filepath)
         except peewee.IntegrityError:
             abort(409)
+
+        return {"status": "deleted"}, 200
 
 
 api.add_resource(UploadEndpoint, "/upload", "/upload/<string:filename>")
 
 
 class CacheEndpoint(Resource):
-    '''Get cached image preview of uploads. Format example:
-        filename.png -> filename_png.jpg
-        filename.jpg -> filename_jpg.jpg
-        filename.pdf -> filename_pdf.jpg
-        filename.pdf -> filename_pdf_<pagenum>.jpg (specific page)'''
-
     def get(self, filename):
         makeCachedUpload(app, filename)
-        return send_from_directory(app.config['CACHE_FOLDER'], filename)
+        return send_from_directory(app.config["CACHE_FOLDER"], filename)
 
 
 api.add_resource(CacheEndpoint, "/upload/cache/<string:filename>")
 
 
 class PdfNumPagesEndpoint(Resource):
-
     def get(self, filename):
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        pages = convert_from_path(filepath)
-        return {'num_pages': len(pages)}, 200
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        if not os.path.isfile(filepath):
+            abort(404)
+
+        try:
+            pages = convert_from_path(filepath)
+        except Exception:
+            abort(400, description="Could not process PDF.")
+
+        return {"num_pages": len(pages)}, 200
 
 
 api.add_resource(PdfNumPagesEndpoint, "/upload/num_pages/<string:filename>")
 
 
-# endpoint for persons
 class PersonEndpoint(Resource):
-    @requireAuth
+    @require_admin
     def post(self):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        data = get_json_or_400(
+            required_fields=[
+                "birthDay",
+                "birthDateUnknowns",
+                "deathDateUnknowns",
+                "deathDay",
+                "file",
+                "birthplace",
+                "parent1",
+                "parent2",
+                "firstName",
+                "lastName",
+                "gender",
+                "isDead",
+                "middleName",
+                "maidenName",
+                "privacy",
+            ]
+        )
 
-        birthDate = None
-        deathDate = None
-        if request.json["birthDay"] is not None:
-            birthDate = parser.parse(request.json["birthDay"])
+        person = Person.create(
+            birthDay=parse_optional_date(data["birthDay"]),
+            birthDateUnknowns=data["birthDateUnknowns"],
+            deathDateUnknowns=data["deathDateUnknowns"],
+            deathDay=parse_optional_date(data["deathDay"]),
+            file=parse_optional_int(data["file"]),
+            birthplace=parse_optional_str(data["birthplace"]),
+            parent1=parse_optional_int(data["parent1"]),
+            parent2=parse_optional_int(data["parent2"]),
+            firstName=data["firstName"],
+            lastName=data["lastName"],
+            gender=int(data["gender"]),
+            isDead=data["isDead"],
+            middleName=parse_optional_str(data["middleName"]),
+            maidenName=parse_optional_str(data["maidenName"]),
+            privacy=int(data["privacy"]),
+        )
 
-        if request.json["deathDay"] is not None:
-            deathDate = parser.parse(request.json["deathDay"])
-
-        person = Person.create(birthDay=birthDate,
-                               birthDateUnknowns=request.json["birthDateUnknowns"],
-                               deathDateUnknowns=request.json["deathDateUnknowns"],
-                               deathDay=deathDate,
-                               file=int(request.json["file"]) if request.json["file"] != "" else None,
-                               birthplace=request.json["birthplace"] if request.json["birthplace"] != "" else None,
-                               parent1=int(request.json["parent1"]) if request.json["parent1"] != "" else None,
-                               parent2=int(request.json["parent2"]) if request.json["parent2"] != "" else None,
-                               firstName=request.json["firstName"],
-                               lastName=request.json["lastName"], gender=int(request.json["gender"]),
-                               isDead=request.json["isDead"],
-                               middleName=request.json["middleName"] if request.json["middleName"] != "" else None,
-                               maidenName=request.json["maidenName"] if request.json["maidenName"] != "" else None,
-                               privacy=int(request.json["privacy"]))
         return {"id": person.id}, 201
 
-    @requireAuth
+    @require_auth
     def get(self, id=None):
-        livingBirthdayAllowed = g.user.hasPrivacyLevel(Privacy.get(Privacy.level == "family"))
-        if id == None:
-            personList = {"people": []}
+        living_birthday_allowed = g.user.hasPrivacyLevel(get_family_privacy())
+
+        if id is None:
+            person_list = {"people": []}
             people = Person.select()
 
             for person in people.iterator():
                 if not g.user.hasPrivacyLevel(person.privacy):
                     continue
-                fileName = person.file
-                if fileName is not None:
-                    fileName = fileName.filename
-                curPerson = {"firstName": person.firstName, "id": person.id, "lastName": person.lastName,
-                             "middleName": person.middleName, "birthDay": str(person.birthDay) if person.isDead or livingBirthdayAllowed else "not_allowed",
-                             "fileName": fileName, "birthDateUnknowns": person.birthDateUnknowns}
-                personList["people"].append(curPerson)
+                person_list["people"].append(
+                    serialize_person_summary(person, living_birthday_allowed)
+                )
 
-            return personList
+            return person_list, 200
 
+        try:
+            person = Person.get(Person.id == id)
+        except Person.DoesNotExist:
+            abort(404)
 
+        if not g.user.hasPrivacyLevel(person.privacy):
+            abort(403)
 
-        else:
-            try:
-                person = Person.select().where(Person.id == id).get()
-                if not g.user.hasPrivacyLevel(person.privacy):
-                    abort(401)
-                fileName = person.file
-                if fileName is not None:
-                    fileName = fileName.filename
+        content_list = []
+        for c in person.content:
+            content = c.content
+            if not g.user.hasPrivacyLevel(content.privacy):
+                continue
+            content_list.append(
+                {
+                    "id": content.id,
+                    "title": content.title,
+                }
+            )
 
-                contentList = []
-                for c in person.content:
-                    content = c.content
-                    if not g.user.hasPrivacyLevel(content.privacy):
-                        continue
-                    contentJSON = {"id": content.id, "title": content.title}
-                    contentList.append(contentJSON)
+        result = {
+            "id": person.id,
+            "firstName": person.firstName,
+            "middleName": person.middleName,
+            "lastName": person.lastName,
+            "birthDay": (
+                str(person.birthDay)
+                if person.isDead or living_birthday_allowed
+                else "not_allowed"
+            ),
+            "birthDateUnknowns": person.birthDateUnknowns,
+            "deathDay": str(person.deathDay),
+            "deathDateUnknowns": person.deathDateUnknowns,
+            "maidenName": person.maidenName,
+            "birthplace": person.birthplace,
+            "isDead": person.isDead,
+            "content": content_list,
+            "gender": person.gender.id,
+            "privacy": person.privacy.id,
+            "fileName": person.file.filename if person.file else None,
+        }
 
-                res = {"firstName": person.firstName, "id": person.id, "lastName": person.lastName,
-                       "middleName": person.middleName, "birthDay": str(person.birthDay) if person.isDead or livingBirthdayAllowed else "not_allowed",
-                       "fileName": fileName, "birthDateUnknowns": person.birthDateUnknowns,
-                       "deathDay": str(person.deathDay), "deathDateUnknowns": person.deathDateUnknowns,
-                       "maidenName": person.maidenName, "birthplace": person.birthplace,
-                       "isDead": person.isDead, "content": contentList, "gender": person.gender.id,
-                       "privacy": person.privacy.id}
+        return result, 200
 
-            except Person.DoesNotExist:
-                ##handle this later
-                abort(404)
-
-        return res
-
-    @requireAuth
+    @require_admin
     def patch(self, id):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        data = get_json_or_400(
+            required_fields=[
+                "birthDay",
+                "birthDateUnknowns",
+                "deathDateUnknowns",
+                "deathDay",
+                "file",
+                "birthplace",
+                "parent1",
+                "parent2",
+                "firstName",
+                "lastName",
+                "gender",
+                "isDead",
+                "middleName",
+                "maidenName",
+                "privacy",
+            ]
+        )
 
-        birthDate = None
-        deathDate = None
-        if request.json["birthDay"] is not None:
-            birthDate = parser.parse(request.json["birthDay"])
+        try:
+            existing_person = Person.get(Person.id == id)
+        except Person.DoesNotExist:
+            abort(404)
 
-        if request.json["deathDay"] is not None:
-            deathDate = parser.parse(request.json["deathDay"])
+        file_value = parse_optional_int(data["file"], default=existing_person.file)
 
-        Person.update(birthDay=birthDate,
-                      birthDateUnknowns=request.json["birthDateUnknowns"],
-                      deathDateUnknowns=request.json["deathDateUnknowns"],
-                      deathDay=deathDate,
-                      file=int(request.json["file"]) if request.json["file"] != "" else Person.get(Person.id == id).file,
-                      birthplace=request.json["birthplace"] if request.json["birthplace"] != "" else None,
-                      parent1=int(request.json["parent1"]) if request.json["parent1"] != "" else None,
-                      parent2=int(request.json["parent2"]) if request.json["parent2"] != "" else None,
-                      firstName=request.json["firstName"],
-                      lastName=request.json["lastName"], gender=int(request.json["gender"]),
-                      isDead=request.json["isDead"],
-                      middleName=request.json["middleName"] if request.json["middleName"] != "" else None,
-                      maidenName=request.json["maidenName"] if request.json["maidenName"] != "" else None,
-                      privacy=int(request.json["privacy"])) \
-            .where(Person.id == id).execute()
+        Person.update(
+            birthDay=parse_optional_date(data["birthDay"]),
+            birthDateUnknowns=data["birthDateUnknowns"],
+            deathDateUnknowns=data["deathDateUnknowns"],
+            deathDay=parse_optional_date(data["deathDay"]),
+            file=file_value,
+            birthplace=parse_optional_str(data["birthplace"]),
+            parent1=parse_optional_int(data["parent1"]),
+            parent2=parse_optional_int(data["parent2"]),
+            firstName=data["firstName"],
+            lastName=data["lastName"],
+            gender=int(data["gender"]),
+            isDead=data["isDead"],
+            middleName=parse_optional_str(data["middleName"]),
+            maidenName=parse_optional_str(data["maidenName"]),
+            privacy=int(data["privacy"]),
+        ).where(Person.id == id).execute()
+
         return {"id": id}, 200
 
-    @requireAuth
+    @require_admin
     def delete(self, id):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        try:
+            person = Person.get(Person.id == id)
+        except Person.DoesNotExist:
+            abort(404)
 
-        person = Person.get(Person.id == id)
-        personContent = Person_Content.delete().where(Person_Content.person == id)
-        personContent.execute()
+        Person_Content.delete().where(Person_Content.person == id).execute()
         person.delete_instance()
-        return 200
+
+        return {"status": "deleted"}, 200
 
 
-api.add_resource(PersonEndpoint, '/person', "/person/<int:id>")
+api.add_resource(PersonEndpoint, "/person", "/person/<int:id>")
 
 
-# endpoint for content
 class ContentEndpoint(Resource):
-    @requireAuth
+    @require_admin
     def post(self):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        data = get_json_or_400(
+            required_fields=[
+                "user",
+                "privacy",
+                "type",
+                "date",
+                "notes",
+                "title",
+                "file",
+                "location",
+                "dateUnknowns",
+                "people",
+            ]
+        )
 
-        date = None
-        if request.json["date"] is not None:
-            date = parser.parse(request.json["date"])
+        content = Content.create(
+            user=int(data["user"]),
+            privacy=int(data["privacy"]),
+            type=int(data["type"]) if data["type"] != 0 else None,
+            date=parse_optional_date(data["date"]),
+            notes=parse_optional_str(data["notes"]),
+            title=data["title"],
+            file=int(data["file"]),
+            location=parse_optional_str(data["location"]),
+            dateUnknowns=data["dateUnknowns"],
+        )
 
-        content = Content.create(user=int(request.json["user"]), privacy=int(request.json["privacy"]),
-                                 type=(int(request.json["type"])) if request.json["type"] != 0 else None,
-                                 date=date,
-                                 notes=(request.json["notes"]) if request.json["notes"] != "" else None,
-                                 title=request.json["title"],
-                                 file=int(request.json["file"]),
-                                 location=(request.json["location"]) if request.json["location"] != "" else None,
-                                 dateUnknowns=request.json["dateUnknowns"])
-        if request.json["people"] != []:
-            for item in request.json["people"]:
-                Person_Content.create(content=content.id, person=item)
+        for item in data["people"]:
+            Person_Content.create(content=content.id, person=item)
+
         return {"id": content.id}, 201
 
-    @requireAuth
+    @require_auth
     def get(self, id=None):
-        if id == None:
-            contentList = {"content": []}
+        if id is None:
+            content_list = {"content": []}
             contents = Content.select()
 
             for content in contents.iterator():
                 if not g.user.hasPrivacyLevel(content.privacy):
                     continue
-                curContent = {"title": content.title, "fileName": content.file.filename, "id": content.id}
-                contentList["content"].append(curContent)
+                content_list["content"].append(serialize_content_summary(content))
 
-            return contentList
-        else:
-            try:
-                content = Content.select().where(Content.id == id).get()
-                if not g.user.hasPrivacyLevel(content.privacy):
-                    abort(401)
-                personList = []
-                for p in content.person:
-                    person = p.person
-                    if not g.user.hasPrivacyLevel(person.privacy):
-                        continue
-                    personJSON = {"id": person.id, "firstName": person.firstName,
-                                  "middleName": person.middleName, "lastName": person.lastName,
-                                  "birthDay": str(person.birthDay), "birthDateUnknowns": person.birthDateUnknowns}
-                    personList.append(personJSON)
+            return content_list, 200
 
-                res = {"title": content.title, "fileName": content.file.filename,
-                       "type": content.type.name if content.type is not None else None,
-                       "date": str(content.date), "dateUnknowns": content.dateUnknowns, "notes": content.notes,
-                       "location": content.location, "people": personList, "privacy": content.privacy.id}
+        try:
+            content = Content.get(Content.id == id)
+        except Content.DoesNotExist:
+            abort(404)
 
-            except Content.DoesNotExist:
-                ##handle this later
-                abort(404)
+        if not g.user.hasPrivacyLevel(content.privacy):
+            abort(403)
 
-        return res
+        person_list = []
+        for p in content.person:
+            person = p.person
+            if not g.user.hasPrivacyLevel(person.privacy):
+                continue
+            person_list.append(
+                {
+                    "id": person.id,
+                    "firstName": person.firstName,
+                    "middleName": person.middleName,
+                    "lastName": person.lastName,
+                    "birthDay": str(person.birthDay),
+                    "birthDateUnknowns": person.birthDateUnknowns,
+                }
+            )
 
-    @requireAuth
+        result = {
+            "title": content.title,
+            "fileName": content.file.filename if content.file else None,
+            "type": content.type.name if content.type is not None else None,
+            "date": str(content.date),
+            "dateUnknowns": content.dateUnknowns,
+            "notes": content.notes,
+            "location": content.location,
+            "people": person_list,
+            "privacy": content.privacy.id,
+        }
+
+        return result, 200
+
+    @require_admin
     def patch(self, id):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        data = get_json_or_400(
+            required_fields=[
+                "privacy",
+                "type",
+                "date",
+                "notes",
+                "title",
+                "location",
+                "dateUnknowns",
+                "people",
+            ]
+        )
 
-        date = None
-        if request.json["date"] is not None:
-            date = parser.parse(request.json["date"])
+        try:
+            Content.get(Content.id == id)
+        except Content.DoesNotExist:
+            abort(404)
 
-        Content.update(privacy=int(request.json["privacy"]),
-                       type=(int(request.json["type"])) if request.json["type"] != 0 else None,
-                       date=date,
-                       notes=(request.json["notes"]) if request.json["notes"] != "" else None,
-                       title=request.json["title"],
-                       location=(request.json["location"]) if request.json["location"] != "" else None,
-                       dateUnknowns=request.json["dateUnknowns"]).where(Content.id == id).execute()
+        Content.update(
+            privacy=int(data["privacy"]),
+            type=int(data["type"]) if data["type"] != 0 else None,
+            date=parse_optional_date(data["date"]),
+            notes=parse_optional_str(data["notes"]),
+            title=data["title"],
+            location=parse_optional_str(data["location"]),
+            dateUnknowns=data["dateUnknowns"],
+        ).where(Content.id == id).execute()
 
         Person_Content.delete().where(Person_Content.content == id).execute()
 
-        if request.json["people"] != []:
-            for item in request.json["people"]:
-                Person_Content.create(content=id, person=item)
+        for item in data["people"]:
+            Person_Content.create(content=id, person=item)
 
         return {"id": id}, 200
 
-    @requireAuth
+    @require_admin
     def delete(self, id):
-        if g.user.privacy != Privacy.get(Privacy.level == "admin"):
-            abort(401)
+        try:
+            content = Content.get(Content.id == id)
+        except Content.DoesNotExist:
+            abort(404)
 
-        content = Content.get(Content.id == id)
-        personContent = Person_Content.delete().where(Person_Content.content == id)
-        personContent.execute()
+        Person_Content.delete().where(Person_Content.content == id).execute()
         content.delete_instance()
-        return 200
+
+        return {"status": "deleted"}, 200
 
 
-api.add_resource(ContentEndpoint, '/content', '/content/<int:id>')
+api.add_resource(ContentEndpoint, "/content", "/content/<int:id>")
 
 
-# endpoint for gender
 class GenderEndpoint(Resource):
     def get(self):
-        genderList = {"genders": []}
+        gender_list = {"genders": []}
         genders = Gender.select()
 
         for gender in genders.iterator():
-            curGender = {"name": gender.name, "id": gender.id}
-            genderList["genders"].append(curGender)
+            gender_list["genders"].append(
+                {
+                    "id": gender.id,
+                    "name": gender.name,
+                }
+            )
 
-        return genderList
+        return gender_list, 200
 
 
-api.add_resource(GenderEndpoint, '/gender')
+api.add_resource(GenderEndpoint, "/gender")
 
 
 class LoginEndpoint(Resource):
     def post(self):
-        passwordInput = request.json["password"]
-        username = request.json["username"]
-        user = User.get(User.username == username)
+        data = get_json_or_400(required_fields=["username", "password"])
 
-        if bcrypt.checkpw(passwordInput.encode("utf8"), user.password.encode("utf8")):
-            # match
-            return {"key": s.sign(str(user.id)).decode("utf8"), 'privacyLevel': user.privacy.level}
-        else:
-            # pass wrong
-            print("no match")
+        username = data["username"]
+        password_input = data["password"]
+
+        try:
+            user = User.get(User.username == username)
+        except User.DoesNotExist:
+            abort(401)
+
+        if not bcrypt.checkpw(
+            password_input.encode("utf8"),
+            user.password.encode("utf8"),
+        ):
+            abort(401)
+
+        return {
+            "key": signer.sign(str(user.id)).decode("utf8"),
+            "privacyLevel": user.privacy.level,
+        }, 200
 
 
 api.add_resource(LoginEndpoint, "/login")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)

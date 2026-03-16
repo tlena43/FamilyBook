@@ -131,7 +131,7 @@ const PersonForm = () => {
 
   useEffect(() => {
     if (!editing) return;
-    if (!loginKey) return; // ✅ IMPORTANT
+    if (!loginKey) return; 
 
     let cancelled = false;
 
@@ -318,7 +318,7 @@ const PersonForm = () => {
             <LabelInputField binding={bindMaidenName} label={"Maiden Name:"} type={"text"} id={"maiden-name"} />
 
             <SelectField binding={bindPrivacy} id={"privacy-select"} label={"Privacy Level"} array={privacyOpts} />
-            <ProcessGender value={gender} setGender={setGender} />
+            <ProcessGender gender={gender} setGender={setGender} />
           </div>
 
           <div className="section">
