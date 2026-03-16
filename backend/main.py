@@ -1,51 +1,24 @@
 import os
-import uuid
 from datetime import datetime
-from functools import wraps
 import bcrypt
 import peewee
-from dateutil import parser
 from dotenv import load_dotenv
 from flask import Flask, abort, g, redirect, request, send_from_directory
 from flask_compress import Compress
 from flask_restful import Api, Resource
-from itsdangerous import TimestampSigner
 from pdf2image import convert_from_path
 from models import *
 from utilities import *
-
+from pyswip import Prolog
 
 load_dotenv()
-
-SECRET_KEY = os.getenv("secretKey")
-if not SECRET_KEY:
-    raise RuntimeError("secretKey environment variable is not set")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "upload")
 CACHE_FOLDER = os.path.join(UPLOAD_FOLDER, "cache")
 
-ALLOWED_UPLOAD_EXTENSIONS = {
-    "png",
-    "jpg",
-    "jpeg",
-    "gif",
-    "pdf",
-    "doc",
-    "docx",
-    "odt",
-    "txt",
-}
-
-AUTH_HEADER_NAME = "X-api-key"
-TOKEN_MAX_AGE_SECONDS = 7 * 24 * 3600
-
-
-
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(CACHE_FOLDER, exist_ok=True)
-
-signer = TimestampSigner(SECRET_KEY)
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -83,6 +56,7 @@ def after_request(response):
     return response
 
 
+##endpoints
 class CheckLoginEndpoint(Resource):
     @require_auth
     def get(self):
