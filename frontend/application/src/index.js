@@ -21,6 +21,7 @@ const DisplayContent = lazy(() => import("./displaycontent"));
 const DisplayPeople = lazy(() => import("./displaypeople"));
 const IndividualPerson = lazy(() => import("./individualperson"));
 const IndividualContent = lazy(() => import("./individualcontent"));
+const FamilyTree = lazy(() => import("./familytree"))
 
 // start navigation functions
 function NavItem({ privacyLevel, menuOpen, closeMenu }) {
@@ -32,12 +33,14 @@ function NavItem({ privacyLevel, menuOpen, closeMenu }) {
       { name: "People", key: 2, route: "person" },
       { name: "Add Content", key: 3, route: "content/new" },
       { name: "View Content", key: 4, route: "content" },
-      { name: "Log out", key: 5, route: "logout" },
+      { name: "Family Tree", key: 5, route: "tree" },
+      { name: "Log out", key: 6, route: "logout" },
     ];
   } else {
     items = [
       { name: "People", key: 2, route: "person" },
       { name: "View Content", key: 4, route: "content" },
+      { name: "Family Tree", key: 5, route: "tree" },
       { name: "Log out", key: 5, route: "logout" },
     ];
   }
@@ -128,6 +131,7 @@ function PageState() {
               <Route path="/person" element={<DisplayPeople admin={false} />} />
               <Route path="/person/:id" element={<IndividualPerson admin={false} />} />
               <Route path="/content" element={<DisplayContent />} />
+              <Route path="/tree" element={<FamilyTree />} />
               <Route path="/" element={<DisplayContent />} />
               <Route path="/content/:id" element={<IndividualContent admin={false} />} />
               <Route path="/login" element={<LoginPage />} />
@@ -154,6 +158,7 @@ function PageState() {
             <Route path="/content/new" element={<ContentForm />} />
             <Route path="/content/edit/:id" element={<ContentForm />} />
             <Route path="/content" element={<DisplayContent />} />
+            <Route path="/tree" element={<FamilyTree />} />
             <Route path="/" element={<DisplayContent />} />
             <Route path="/content/:id" element={<IndividualContent admin={true} />} />
             <Route path="/login" element={<LoginPage />} />
