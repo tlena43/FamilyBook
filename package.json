@@ -3,7 +3,7 @@
     "concurrently": "^9.2.1"
   },
   "scripts": {
-    "frontend": "npm start --prefix frontend/application",
+    "frontend": "npm start --prefix frontend",
     "backend": "cd backend && python main.py",
     "dev": "concurrently -n \"frontend,backend\" -c \"cyan,green\" \"npm run frontend\" \"npm run backend\""
   }
