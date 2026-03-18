@@ -3,23 +3,9 @@ import "./index.css";
 import { Link } from "react-router-dom";
 import { Person } from "./person.js";
 import { api } from "./global.js";
+import PersonCard from "./personcard.js";
 
 // helpers needed for searches
-function PersonDisplay({ person }) {
-  return (
-    <Link to={"/person/" + person.getID()}>
-      <div className="content-card">
-        <p>
-          {person.getFullName()}
-          <br />
-          {person.getBirthday()}
-        </p>
-        <img alt="Profile" src={person.getCachedFileName()} />
-      </div>
-    </Link>
-  );
-}
-
 function ContentCard({ content }) {
   return (
     <Link to={"/content/" + content.id}>
@@ -65,7 +51,7 @@ function SearchList({ filteredContent, cardType }) {
   const cards = filteredContent.map((i) => {
     if (cardType === "content") return <ContentCard content={i} key={i.id} />;
     if (cardType === "person")
-      return <PersonDisplay key={i.id} person={new Person(i)} />;
+      return <PersonCard key={i.id} person={new Person(i)} />;
     return null;
   });
 

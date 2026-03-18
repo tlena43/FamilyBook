@@ -1,18 +1,46 @@
-import React, { useEffect, useState } from "react";
-import "./index.css";
-import { apiJson } from "./global.js";
+import React, { useState, useEffect } from 'react';
+import './index.css';
+import { fetchPeople } from './formfunctions';
+import Search from './search'
 import { useAuth } from "./authContext.js";
 
+function ProcessPeople() {
+  const { loginKey } = useAuth();
+  const [people, setPeople] = useState([]);
+  const [loadingPeople, setLoadingPeople] = useState(true);
+  const [errorPeople, setErrorPeople] = useState(null);
 
+  useEffect(() => {
+    if(!loginKey) return;
+    let cancelled = false;
 
-// start display functions
-const FamilyTree = () => {
+    (async () => {
+      try {
+        setLoadingPeople(true);
+        setErrorPeople(null);
+
+        const valuePeople = await fetchPeople(loginKey);
+        if (cancelled) return;
+
+        setPeople(valuePeople ?? []);
+      } catch (e) {
+        if (cancelled) return;
+        setErrorPeople(e);
+      } finally {
+        if (!cancelled) setLoadingPeople(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loginKey]);
+
   return (
     <div>
-      This is the family tree page
+      <Search details={people} cardType="person" isLoading={loadingPeople} error={errorPeople} />
     </div>
   );
-};
-// end display functions
+}
 
-export default FamilyTree;
+export default ProcessPeople;
