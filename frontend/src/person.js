@@ -17,6 +17,9 @@ export class Person {
     this.firstName = p.firstName ?? "";
     this.middleName = p.middleName ?? "";
     this.lastName = p.lastName ?? "";
+    this.parent1 = p.parent1 ?? "";
+    this.parent2 = p.parent2 ?? "";
+    this.spouse = p.spouse ?? "";
 
     this.birthday =
       p.birthDay && p.birthDay !== "not_allowed"
@@ -80,4 +83,13 @@ export class Person {
   getMaidenName() {
     return this.maidenName;
   }
+
+  getParents(){
+    return [this.parent1, this.parent2];
+  }
+
+  getSpouse(){
+    return this.spouse;
+  }
+
 }

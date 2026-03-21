@@ -66,6 +66,7 @@ export async function deletePerson(loginKey, id) {
 
   return true;
 }
+//end api helpers
 
 
 // person form
@@ -191,6 +192,16 @@ const PersonForm = () => {
         setDeathYear(deathDate.year ?? "");
         setNumDaysDeath(deathDate.daysNum);
 
+        const mapSpouse = personEdit.spouse ? [new Person(personEdit.spouse)] : [];
+        const mapParents = [personEdit.parent1, personEdit.parent2]
+          .filter(Boolean) // remove nulls
+          .map(p => new Person(p));
+        setSelectedListParent(mapParents);
+        setSelectedListSpouse(mapSpouse);
+        
+        const mapChildren = (personEdit.children ?? []).map(p => new Person(p));
+        setSelectedListChild(mapChildren);
+
         setIsDeadChecked(!!personEdit.isDead);
         setPrivacy(privacyOpts[(personEdit.privacy ?? 1) - 1] ?? "");
       } catch (e) {
@@ -233,6 +244,11 @@ const PersonForm = () => {
         return;
       }
 
+      const selectedListParentID = selectedListParent.map((p) => p.id);
+      const selectedListChildID = selectedListChild.map((p) => p.id);
+      const selectedListSpouseID = selectedListSpouse.map((p) => p.id);
+
+
       // Build person object
       const person = {
         birthDay: birthDateFull[1],
@@ -240,8 +256,8 @@ const PersonForm = () => {
         deathDay: deathDateFull[1],
         deathDateUnknowns: deathDateFull[0],
         birthplace: (birthplace ?? "").trim(),
-        parent1: "",
-        parent2: "",
+        parent1: selectedListParentID?.[0] ?? null,
+        parent2: selectedListParentID?.[1] ?? null,
         firstName: (firstName ?? "").trim(),
         lastName: (lastName ?? "").trim(),
         gender: gender,
@@ -250,6 +266,8 @@ const PersonForm = () => {
         maidenName: (maidenName ?? "").trim(),
         file: "",
         privacy: privacyOpts.indexOf(privacy) + 1,
+        children: selectedListChildID,
+        spouse: selectedListSpouseID?.[0] ?? null
       };
 
       // Upload + create/patch

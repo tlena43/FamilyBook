@@ -153,6 +153,7 @@ class PersonEndpoint(Resource):
                 "birthplace",
                 "parent1",
                 "parent2",
+                "spouse",
                 "firstName",
                 "lastName",
                 "gender",
@@ -162,7 +163,9 @@ class PersonEndpoint(Resource):
                 "privacy",
             ]
         )
-
+        
+        children = data["children"]
+   
         person = Person.create(
             birthDay=parse_optional_date(data["birthDay"]),
             birthDateUnknowns=data["birthDateUnknowns"],
@@ -170,8 +173,9 @@ class PersonEndpoint(Resource):
             deathDay=parse_optional_date(data["deathDay"]),
             file=parse_optional_int(data["file"]),
             birthplace=parse_optional_str(data["birthplace"]),
-            parent1=parse_optional_int(data["parent1"]),
-            parent2=parse_optional_int(data["parent2"]),
+            parent1_id=parse_optional_int(data["parent1"]),
+            parent2_id=parse_optional_int(data["parent2"]),
+            spouse_id=parse_optional_int(data["spouse"]),
             firstName=data["firstName"],
             lastName=data["lastName"],
             gender=int(data["gender"]),
@@ -180,6 +184,41 @@ class PersonEndpoint(Resource):
             maidenName=parse_optional_str(data["maidenName"]),
             privacy=int(data["privacy"]),
         )
+        
+        spouse_id = parse_optional_int(data.get("spouse"))
+
+        if spouse_id and spouse_id != person.id:
+            spouse_person = Person.get_or_none(Person.id == spouse_id)
+            if spouse_person:
+                spouse_person.spouse_id = person.id
+                spouse_person.save()
+                
+        children_ids = data.get("children") or []
+
+        for child_id in children_ids:
+            try:
+                child_id = int(child_id)
+            except (TypeError, ValueError):
+                continue
+
+            if child_id == person.id:
+                continue  # prevent self-parenting
+
+            child = Person.get_or_none(Person.id == child_id)
+            if not child:
+                continue
+
+            # Fill first available parent slot
+            if not child.parent1_id:
+                child.parent1_id = person.id
+            elif not child.parent2_id:
+                child.parent2_id = person.id
+            else:
+                # already has two parents
+                continue
+
+            child.save()
+                
 
         return {"id": person.id}, 201
 
@@ -240,6 +279,41 @@ class PersonEndpoint(Resource):
             "gender": person.gender.id,
             "privacy": person.privacy.id,
             "fileName": person.file.filename if person.file else None,
+            "parent1" : {
+                "id": person.parent1_id.id,
+                "firstName": person.parent1_id.firstName,
+                "lastName": person.parent1_id.lastName,
+                "middleName": person.parent1_id.middleName,
+                "birthDay": str(person.parent1_id.birthDay),
+                "birthDateUnknowns": person.parent1_id.birthDateUnknowns,
+                } if person.parent1_id else None,
+            "parent2" : {
+                "id": person.parent2_id.id,
+                "firstName": person.parent2_id.firstName,
+                "lastName": person.parent2_id.lastName,
+                "middleName": person.parent2_id.middleName,
+                "birthDay": str(person.parent2_id.birthDay),
+                "birthDateUnknowns": person.parent2_id.birthDateUnknowns,
+                } if person.parent2_id else None,
+            "spouse" : {
+                "id": person.spouse_id.id,
+                "firstName": person.spouse_id.firstName,
+                "lastName": person.spouse_id.lastName,
+                "middleName": person.spouse_id.middleName,
+                "birthDay": str(person.spouse_id.birthDay),
+                "birthDateUnknowns": person.spouse_id.birthDateUnknowns,
+                } if person.spouse_id else None,
+            "children": [
+                {
+                    "id": child.id,
+                    "firstName": child.firstName,
+                    "lastName": child.lastName,
+                    "middleName": child.middleName,
+                }
+                for child in Person.select().where(
+                    (Person.parent1_id == person) | (Person.parent2_id == person)
+                )
+            ],
         }
 
         return result, 200

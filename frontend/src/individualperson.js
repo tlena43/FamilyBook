@@ -77,6 +77,10 @@ function PersonDisplay({ person, content, admin }) {
         {person.getBirthday() ? <p>Birth Date: {person.getBirthday()}</p> : null}
         {person.getBirthPlace() ? <p>Birth Place: {person.getBirthPlace()}</p> : null}
         {person.getMaidenName() ? <p>Maiden Name: {person.getMaidenName()}</p> : null}
+        {person.getSpouse() ? <p>Spouse: {person.getSpouse()}</p> : null}
+        {person.getParents()[0] ? <p>Parents: {person.getParents()[0]}</p> : null}
+        {person.getParents()[1] ? <p>{person.getParents()[1]}</p> : null}
+
         {deathDay ? <p>Death Date: {deathDay}</p> : null}
 
         {content?.length ? <p>Tagged Content:</p> : null}
