@@ -8,15 +8,13 @@ import {
   SelectField,
   validateDates,
   DateBundle,
-  fetchPeople,
   separateDate,
-  PeopleSearch
 } from "./formfunctions.js";
 import { apiJson, apiFetch } from "./global.js";
 import { Person } from "./person.js";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "./authContext.js";
-
+import PeopleSearch from "./peoplepicker.js";
 
 
 // api helpers
@@ -111,36 +109,6 @@ const ContentForm = () => {
   const [storedFile, setStoredFile] = useState("");
   const [isUploading, setIsUploading] = useState("");
 
-  // People list state (replaces manual promise)
-  const [people, setPeople] = useState([]);
-  const [loadingPeople, setLoadingPeople] = useState(true);
-  const [errorPeople, setErrorPeople] = useState(null);
-
-  useEffect(() => {
-    if (!loginKey) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setLoadingPeople(true);
-        setErrorPeople(null);
-
-        const valuePeople = await fetchPeople(loginKey);
-        if (cancelled) return;
-
-        setPeople(valuePeople ?? []);
-      } catch (e) {
-        if (!cancelled) setErrorPeople(e);
-      } finally {
-        if (!cancelled) setLoadingPeople(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loginKey]);
 
   useEffect(() => {
     if (!loginKey) return;
@@ -309,11 +277,10 @@ const ContentForm = () => {
 
           <div className="inner-wrap">
             <PeopleSearch
-              people={people}
               selectedList={selectedList}
               setSelectedList={setSelectedList}
-              isLoading={loadingPeople}
-              error={errorPeople}
+              loginKey={loginKey}
+              maxSelect={null}
             />
           </div>
 

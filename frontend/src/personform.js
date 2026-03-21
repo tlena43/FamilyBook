@@ -16,6 +16,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Person } from "./person";
 import { apiFetch, apiJson } from "./global.js";
 import { useAuth } from "./authContext.js";
+import PeopleSearch from "./peoplepicker.js";
 
 // api helpers
 export async function uploadFile(file, loginKey) {
@@ -66,9 +67,10 @@ export async function deletePerson(loginKey, id) {
   return true;
 }
 
+
 // person form
 const PersonForm = () => {
-  const { loginKey } = useAuth(); 
+  const { loginKey } = useAuth();
   const fileRef = useRef(null);
   const navigate = useNavigate();
   const { id } = useParams();
@@ -78,6 +80,14 @@ const PersonForm = () => {
   const [errorPerson, setErrorPerson] = useState(null);
   const [loadingPerson, setLoadingPerson] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [people, setPeople] = useState([]);
+  const [loadingPeople, setLoadingPeople] = useState(true);
+  const [errorPeople, setErrorPeople] = useState(null);
+  const [selectedListParent, setSelectedListParent] = useState([]);
+  const [selectedListChild, setSelectedListChild] = useState([]);
+  const [selectedListSpouse, setSelectedListSpouse] = useState([]);
+
+
 
   const { value: firstName, bind: bindFirstName, reset: resetFirstName, setValue: setFirstName } =
     useInput("");
@@ -129,9 +139,25 @@ const PersonForm = () => {
 
   const privacyOpts = ["Admin Only", "Close Family", "Extended Family"];
 
+  function resetForm() {
+    resetFirstName();
+    resetLastName();
+    resetMiddleName();
+    resetBirthplace();
+    resetBirthMonth();
+    resetBirthDay();
+    resetBirthYear();
+    resetDeathMonth();
+    resetDeathDay();
+    resetDeathYear();
+    resetIsDead();
+    setGender("");
+    resetMaidenName();
+  }
+
   useEffect(() => {
     if (!editing) return;
-    if (!loginKey) return; 
+    if (!loginKey) return;
 
     let cancelled = false;
 
@@ -243,19 +269,7 @@ const PersonForm = () => {
         navigate("/person/" + created.id);
 
         // Reset after success
-        resetFirstName();
-        resetLastName();
-        resetMiddleName();
-        resetBirthplace();
-        resetBirthMonth();
-        resetBirthDay();
-        resetBirthYear();
-        resetDeathMonth();
-        resetDeathDay();
-        resetDeathYear();
-        resetIsDead();
-        setGender("");
-        resetMaidenName();
+        resetForm();
 
         return;
       }
@@ -269,19 +283,7 @@ const PersonForm = () => {
       navigate("/person/" + id);
 
       // Reset after success
-      resetFirstName();
-      resetLastName();
-      resetMiddleName();
-      resetBirthplace();
-      resetBirthMonth();
-      resetBirthDay();
-      resetBirthYear();
-      resetDeathMonth();
-      resetDeathDay();
-      resetDeathYear();
-      resetIsDead();
-      setGender("");
-      resetMaidenName();
+      resetForm();
     } catch (e) {
       console.error("Submit failed:", e);
       setErrorPerson(e);
@@ -335,9 +337,35 @@ const PersonForm = () => {
               show={true}
             />
           </div>
+          <div className="section">
+            <span>3</span>Family
+          </div>
+          <div className="inner-wrap">
+            <label>Parents</label>
+            <PeopleSearch
+              selectedList={selectedListParent}
+              setSelectedList={setSelectedListParent}
+              loginKey={loginKey}
+              maxSelect={2}
+            />
+            <label>Children</label>
+            <PeopleSearch
+              selectedList={selectedListChild}
+              setSelectedList={setSelectedListChild}
+              loginKey={loginKey}
+              maxSelect={null}
+            />
+            <label>Spouse</label>
+            <PeopleSearch
+              selectedList={selectedListSpouse}
+              setSelectedList={setSelectedListSpouse}
+              loginKey={loginKey}
+              maxSelect={1}
+            />
+          </div>
 
           <div className="section">
-            <span>3</span>Death
+            <span>4</span>Death
           </div>
 
           <div className="inner-wrap">
