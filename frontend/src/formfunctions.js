@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import "./index.css";
 import { apiJson } from "./global.js";
+import { Person } from "./person.js";
 
 const monthList = [
   "Unknown","January","February","March","April","May","June",
@@ -379,4 +380,112 @@ export const fetchContent = async (id, loginKey) => {
     method: "GET",
   });
 };
+
+function SearchList({ filteredPersons, selectedList, setSelectedList }) {
+  const filtered = filteredPersons.map((person) => (
+    <PersonDisplay
+      key={person.id}
+      person={new Person(person)}
+      selectedList={selectedList}
+      setSelectedList={setSelectedList}
+    />
+  ));
+
+  return <div>{filtered}</div>;
+}
+
+// people picker
+function PersonDisplay({ person, selectedList, setSelectedList }) {
+  const isSelected = selectedList.some((p) => p.id === person.id);
+
+  function personDisplayClick() {
+    if (isSelected) {
+      setSelectedList(selectedList.filter((item) => item.id !== person.id));
+    } else {
+      setSelectedList((arr) => [...arr, person]);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        onClick={personDisplayClick}
+        className={(isSelected ? "is-selected" : "not-selected") + " search-option"}
+      >
+        <p className="search-name-text">{person.getFullName()}</p>
+        <p className="subtext">Born: {person.getBirthday()}</p>
+      </div>
+    </div>
+  );
+}
+
+const Scroll = (props) => <div className="search-scroll">{props.children}</div>;
+
+export function PeopleSearch({ people, selectedList, setSelectedList, isLoading, error }) {
+  const [searchField, setSearchField] = useState("");
+
+  const filtered = useMemo(() => {
+    const lowerSearchStr = searchField.toLowerCase();
+
+    return (people ?? []).filter((person) => {
+      const fn = (person.firstName ?? "").toLowerCase();
+      const mn = (person.middleName ?? "").toLowerCase();
+      const ln = (person.lastName ?? "").toLowerCase();
+
+      const personWithMiddle = [fn, mn, ln].filter(Boolean).join(" ");
+      const personWithoutMiddle = [fn, ln].filter(Boolean).join(" ");
+
+      return (
+        personWithMiddle.includes(lowerSearchStr) ||
+        personWithoutMiddle.includes(lowerSearchStr) ||
+        fn.includes(lowerSearchStr) ||
+        ln.includes(lowerSearchStr) ||
+        mn.includes(lowerSearchStr)
+      );
+    });
+  }, [people, searchField]);
+
+  function removeBtnClick(index) {
+    setSelectedList(selectedList.filter((item) => item !== selectedList[index]));
+  }
+
+  const selectedPeople = selectedList.map((person, index) => (
+    <li key={person.id}>
+      <button className="remove-selected-btn" onClick={() => removeBtnClick(index)} type="button">
+        &#10006;
+      </button>
+      <p className="search-name-text">{person.getFullName()}</p>
+      <p className="subtext">Born: {person.getBirthday()}</p>
+    </li>
+  ));
+
+  if (error) return "Failed to load resource A";
+  if (isLoading) return "Loading...";
+
+  return (
+    <section>
+      <div>
+        <input
+          type="search"
+          placeholder="Type to Search"
+          onChange={(e) => setSearchField(e.target.value)}
+          className="box-input"
+        />
+      </div>
+
+      <Scroll>
+        <SearchList
+          filteredPersons={filtered}
+          selectedList={selectedList}
+          setSelectedList={setSelectedList}
+        />
+      </Scroll>
+
+      <label id="selected-label" htmlFor="selected-list">
+        Selected People
+      </label>
+      <ul id="selected-list">{selectedPeople}</ul>
+    </section>
+  );
+}
 // end form functions
