@@ -161,6 +161,7 @@ class PersonEndpoint(Resource):
                 "middleName",
                 "maidenName",
                 "privacy",
+                "children"
             ]
         )
         
@@ -337,8 +338,12 @@ class PersonEndpoint(Resource):
                 "middleName",
                 "maidenName",
                 "privacy",
+                "spouse",
+                "children"
             ]
         )
+        
+        id = int(id)
 
         try:
             existing_person = Person.get(Person.id == id)
@@ -354,8 +359,8 @@ class PersonEndpoint(Resource):
             deathDay=parse_optional_date(data["deathDay"]),
             file=file_value,
             birthplace=parse_optional_str(data["birthplace"]),
-            parent1=parse_optional_int(data["parent1"]),
-            parent2=parse_optional_int(data["parent2"]),
+            parent1_id=parse_optional_int(data["parent1"]),
+            parent2_id=parse_optional_int(data["parent2"]),
             firstName=data["firstName"],
             lastName=data["lastName"],
             gender=int(data["gender"]),
@@ -363,7 +368,42 @@ class PersonEndpoint(Resource):
             middleName=parse_optional_str(data["middleName"]),
             maidenName=parse_optional_str(data["maidenName"]),
             privacy=int(data["privacy"]),
+            spouse_id=parse_optional_int(data["spouse"]),
         ).where(Person.id == id).execute()
+        
+        spouse_id = parse_optional_int(data.get("spouse"))
+
+        if spouse_id and spouse_id != id:
+            spouse_person = Person.get_or_none(Person.id == spouse_id)
+            if spouse_person:
+                spouse_person.spouse_id = id
+                spouse_person.save()
+                
+        children_ids = data.get("children") or []
+
+        for child_id in children_ids:
+            try:
+                child_id = int(child_id)
+            except (TypeError, ValueError):
+                continue
+
+            if child_id == id:
+                continue  # prevent self-parenting
+
+            child = Person.get_or_none(Person.id == child_id)
+            if not child:
+                continue
+
+            # Fill first available parent slot
+            if not child.parent1_id:
+                child.parent1_id = id
+            elif not child.parent2_id:
+                child.parent2_id = id
+            else:
+                # already has two parents
+                continue
+
+            child.save()
 
         return {"id": id}, 200
 

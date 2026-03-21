@@ -85,11 +85,12 @@ export class Person {
   }
 
   getParents(){
-    return [this.parent1, this.parent2];
+    return [[this.parent1.firstName, this.parent1.middleName, this.parent1.lastName].filter(Boolean).join(" "),
+     [this.parent2.firstName, this.parent2.middleName, this.parent2.lastName].filter(Boolean).join(" ")];
   }
 
   getSpouse(){
-    return this.spouse;
+    return [this.spouse.firstName, this.spouse.middleName, this.spouse.lastName].filter(Boolean).join(" ");
   }
 
 }
