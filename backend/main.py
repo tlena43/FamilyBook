@@ -13,6 +13,9 @@ from pyswip import Prolog
 
 load_dotenv()
 
+# Prolog engine initialization (rest of the code is down below):
+prolog_engine = Prolog()
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "upload")
 CACHE_FOLDER = os.path.join(UPLOAD_FOLDER, "cache")
@@ -606,7 +609,194 @@ class LoginEndpoint(Resource):
 
 
 api.add_resource(LoginEndpoint, "/login")
+# =====================================================
+#                    PROLOG SECTION
+# =====================================================
 
+# Load family_rules.pl from file:
+def initialize_prolog():
+    """Initialize the Prolog engine with our family rules."""
+    global prolog_engine
+    prolog_engine = Prolog()
+    rules_file = os.path.join(APP_DIR, "prolog", "family_rules.pl")
+    if os.path.exists(rules_file):
+        prolog_engine.consult(rules_file)
+
+# Need to connect the database to the Prolog engine (note that we only want the base facts, rest is inferred):
+def load_prolog_facts(prolog_engine):
+    """This function loads a person's data from the database in the form of Prolog facts."""
+    for person in Person.select():
+        # Male or female:
+        if person.gender.name == "male":
+            prolog_engine.assertz(f"male({person.id})")
+        else:
+            prolog_engine.assertz(f"female({person.id})")
+        
+        # Parent or spouse:
+        # Parent follows parent(parent, person).
+        # Spouse follows spouse(person, spouse).
+        if person.parent1_id:
+            prolog_engine.assertz(f"parent({person.parent1_id.id}, {person.id})")
+        if person.parent2_id:
+            prolog_engine.assertz(f"parent({person.parent2_id.id}, {person.id})")
+        if person.spouse_id:
+            prolog_engine.assertz(f"spouse({person.id}, {person.spouse_id.id})")
+
+# Need a function that allows us to determine the relationship between two people (inference):
+# This should only be available to AUTHENTICATED users!!!
+class QueryRelationshipEndpoint(Resource):
+    @require_auth
+    def post(self):
+        """Query the relationship(s) between two people using Prolog."""
+        data = get_json_or_400(required_fields=["person1_id", "person2_id", "relationship"])
+
+        # Split data by person + relationship:
+        person1_id = int(data["person1_id"])
+        person2_id = int(data["person2_id"])
+        relationship = data["relationship"]
+
+        # Reload facts each time this endpoint is called (can improve by implementing catching!):
+        load_prolog_facts(prolog_engine)
+
+        # Build the Prolog query, run it, and handle any surfacing errors:
+        try: 
+            query = f"{relationship}({person1_id}, {person2_id})"
+            result = list(prolog_engine.query(query))
+
+            if result:
+                return {"relationship": relationship, "exists": True}, 200
+            else:
+                return {"relationship": relationship, "exists": False}, 200
+        except Exception as e:
+            abort(400, description=f"Invalid relationship query: {str(e)}")
+
+# Register the QueryRelationshipEndpoing API endpoint:
+api.add_resource(QueryRelationshipEndpoint, "/query/relationship")
+
+# Need to build an endpoint that gets family tree data as React Flow nodes and edges, then displays them:
+# For AUTHORIZED users only!!!
+class FamilyTreeEndpoint(Resource):
+    @require_auth
+    def get(self, person_id):
+        """Get family tree data in the form of React Flow nodes and edges."""
+        # Start with our "root" person:
+        try:
+            root_person = Person.get(Person.id == person_id)
+        except Person.DoesNoteExist:
+            abort(404)
+
+        # Check the person's privacy level (based on utilities.py):
+        if not g.user.hasPriavcyLevel(root_person.privacy):
+            abort(403)
+
+        # Reload Prolog facts:
+        load_prolog_facts(prolog_engine)
+
+        # Build tree structure:
+        nodes = []
+        edges = []
+        visited = set()
+
+        # Function that builds the person's tree:
+        def build_tree(person, x=0, y=0, level=0):
+            """Recursively build tree nodes and edges."""
+            if person.id in visited:
+                return
+            visited.add(person.id)
+
+            # Create node for our root person:
+            node = {
+                "id": str(person.id),
+                "data": {
+                    "label": f"{person.firstName} {person.lastName}",
+                    "birthDay": str(person.birthDay) if person.birthDay else "Unknown",
+                    "gender": person.gender.name,
+                },
+                "position": {"x": x, "y": y},
+                "style": {
+                    "background": "#FFB6C1" if person.gender.name == "female" else "#87CEEB",
+                    "border": "2px solid #333",
+                    "borderRadius": "8px",
+                    "padding": "10px",
+                }
+            }
+
+            # Append the node to the tree:
+            nodes.append(node)
+
+            # Add the person's parents as edges if visible:
+            # Parents go above the person, one on the left, the other on the right.
+            if person.parent1_id:
+                if g.user.hasPrivacyLevel(person.parent1_id.privacy):
+                    edge = {
+                        "id": f"edge-{person.parent1_id.id}-{person.id}",
+                        "source": str(person.parent1_id.id),
+                        "target": str(person.id),
+                        "label": "parent",
+                    }
+                    edges.append(edge)
+                    build_tree(person.parent1_id, x - 150, y - 100, level + 1)
+            
+            if person.parent2_id:
+                if g.user.hasPrivacyLevel(person.parent2_id.privacy):
+                    edge = {
+                        "id": f"edge-{person.parent2_id.id}-{person.id}",
+                        "source": str(person.parent2_id.id),
+                        "target": str(person.id),
+                        "label": "parent",
+                    }
+                    edges.append(edge)
+                    build_tree(person.parent2_id, x + 150, y - 100, level + 1)
+
+            # Add the person's spouse as an edge if visible:
+            # Spouses are to the right of the person.
+            if person.spouse_id:
+                if g.user.hasPrivacyLevel(person.spouse_id.privacy):
+                    edge = {
+                        "id": f"edge-{person.id}-{person.spouse_id.id}",
+                        "source": str(person.id),
+                        "target": str(person.spouse_id.id),
+                        "label": "spouse",
+                        "style": {"stroke": "#FF69B4", "strokeWidth": 2},
+                    }
+                    edges.append(edge)
+                    build_tree(person.spouse_id, x + 100, y, level)
+
+            # Add the person's children as edges if visible:
+            # Children are beneath the person and spread out if there are multiple.
+            children = Person.select().where(
+                (Person.parent1_id == person) | (Person.parent2_id == person)
+            )
+            for idx, child in enumerate(children):
+                if not g.user.hasPrivacyLevel(child.privacy):
+                    continue
+                
+                edge = {
+                    "id": f"edge-{person.id}-{child.id}",
+                    "source": str(person.id),
+                    "target": str(child.id),
+                    "label": "child",
+                }
+                edges.append(edge)
+                children_list = list(children)
+                for idx, child in enumerate(children_list):
+                    child_x = x + (idx - (len(children_list) - 1) / 2) * 200
+                    build_tree(child, child_x, y + 150, level - 1)
+
+            # Build the tree:
+            build_tree(root_person)
+
+            # Return the tree:
+            return {
+                "nodes": nodes,
+                "edges": edges,
+            }, 200
+
+# Add the FamilyTreeEndpoint API endpoint:
+api.add_resource(FamilyTreeEndpoint, "/tree/<int:person_id>")
+
+# Initialize Prolog when the application starts:
+initialize_prolog()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
