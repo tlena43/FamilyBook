@@ -15,6 +15,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { AuthProvider, useAuth } from "./authContext.js";
 
 const LoginPage = lazy(() => import("./login"));
+const SignupPage = lazy(() => import("./signup"));
 const PersonForm = lazy(() => import("./personform"));
 const ContentForm = lazy(() => import("./contentform"));
 const DisplayContent = lazy(() => import("./displaycontent"));
@@ -115,6 +116,8 @@ function PageState() {
     return (
       <Suspense fallback={<div>Loading...</div>}>
         <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route path="*" element={<LoginPage />} />
         </Routes>
       </Suspense>
@@ -136,6 +139,7 @@ function PageState() {
               <Route path="/" element={<DisplayContent />} />
               <Route path="/content/:id" element={<IndividualContent admin={false} />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
               <Route path="/logout" element={<LogOut />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
