@@ -1,51 +1,8 @@
-// useState -> store data (nodes, edges, loading, error)
-// useEffect -> run code when the component loads or updates
-// ReactFlow -> main graph renderer
-// Background / Controls / MiniMap -> UI helpers
 import { useState, useEffect } from 'react';
-import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import PersonNode from './PersonNode.js';
 
-// Test Data:
-// id -> unique ID for each node
-// data.label -> info displayed in each node
-// position -> where node appears
-// handles -> custom info for connection points
-const testNodes = [
-  {
-    id: "1",
-    data: { label: "Grandpa", handles: [false, true] },
-    position: { x: 200, y: 0 },
-  },
-  {
-    id: "2",
-    data: { label: "Grandma", handles: [false, true] },
-    position: { x: 400, y: 0 },
-  },
-  {
-    id: "3",
-    data: { label: "Dad", handles: [true, true] },
-    position: { x: 300, y: 150 },
-  },
-  {
-    id: "4",
-    data: { label: "Mom", handles: [false, true] },
-    position: { x: 500, y: 150 },
-  },
-  {
-    id: "5",
-    data: { label: "Me", handles: [true, false] },
-    position: { x: 400, y: 300 },
-  },
-];
-
-// Edge format: source (parent) -> target (child).
-const testEdges = [
-  { id: "e1-3", source: "1", target: "3" },
-  { id: "e2-3", source: "2", target: "3" },
-  { id: "e3-5", source: "3", target: "5" },
-  { id: "e4-5", source: "4", target: "5" },
-];
 
 // This function fetches tree data, stores it, and passes it to React Flow.
 function Flow({ personId }) {
@@ -57,6 +14,10 @@ function Flow({ personId }) {
   const [loading, setLoading] = useState(true);
   // Error -> for failures
   const [error, setError] = useState(null);
+
+  const nodeTypes = {
+  person: PersonNode,
+};
 
   // Fetching data... (this runs whenever personId changes or whenever the component mounts)
   useEffect(() => {
@@ -95,7 +56,7 @@ function Flow({ personId }) {
  
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <ReactFlow nodes={nodes} edges={edges} fitView> 
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView> 
         <Background />
         <Controls />
         <MiniMap />

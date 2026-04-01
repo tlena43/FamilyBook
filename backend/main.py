@@ -21,6 +21,7 @@ from pdf2image import convert_from_path
 from models import *
 from utilities import *
 from pyswip import Prolog
+from familyTree import *
 
 # Prolog engine initialization (rest of the code is down below):
 prolog_engine = Prolog()
@@ -795,114 +796,64 @@ api.add_resource(QueryRelationshipEndpoint, "/query/relationship")
 class FamilyTreeEndpoint(Resource):
     @require_auth
     def get(self, person_id):
-        """Get family tree data in the form of React Flow nodes and edges."""
-        # Start with our "root" person:
         try:
             root_person = Person.get(Person.id == person_id)
         except Person.DoesNotExist:
             abort(404)
 
-        # Check the person's privacy level (based on utilities.py):
         if not g.user.hasPrivacyLevel(root_person.privacy):
             abort(403)
 
-        # Build tree structure:
+        people, parent_edges, spouse_edges = collect_family(root_person)
+        generation = assign_generations(root_person.id, people, parent_edges, spouse_edges)
+        rows = group_by_generation(generation)
+        rows = initial_row_order(rows, people)
+        rows = keep_spouses_adjacent(rows, spouse_edges)
+        positions = assign_positions(rows, generation)
+
         nodes = []
         edges = []
-        visited = set()
 
-        # Function that builds the person's tree:
-        def build_tree(person, x=0, y=0, level=0):
-            """Recursively build tree nodes and edges."""
-            if person.id in visited:
-                return
-            visited.add(person.id)
-
-            # Create node for our root person:
-            node = {
-                "id": str(person.id),
+        for pid, person in people.items():
+            gender_name = (person.gender.name or "").lower()
+            nodes.append({
+                "id": str(pid),
+                "type": "person",
                 "data": {
                     "label": f"{person.firstName} {person.lastName}",
                     "birthDay": str(person.birthDay) if person.birthDay else "Unknown",
                     "gender": person.gender.name,
                 },
-                "position": {"x": x, "y": y},
+                "position": positions[pid],
                 "style": {
-                    "background": "#FFB6C1" if person.gender.name == "female" else "#87CEEB",
+                    "background": "#FFB6C1" if gender_name == "female" else "#87CEEB",
                     "border": "2px solid #333",
                     "borderRadius": "8px",
                     "padding": "10px",
                 }
-            }
+            })
 
-            # Append the node to the tree:
-            nodes.append(node)
+        for parent_id, child_id in set(parent_edges):
+            edges.append({
+                "id": f"parent-{parent_id}-{child_id}",
+                "source": str(parent_id),
+                "target": str(child_id),
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+            })
 
-            # Add the person's parents as edges if visible:
-            # Parents go above the person, one on the left, the other on the right.
-            if person.parent1_id:
-                if g.user.hasPrivacyLevel(person.parent1_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.parent1_id.id}-{person.id}",
-                        "source": str(person.parent1_id.id),
-                        "target": str(person.id),
-                        "label": "parent",
-                    }
-                    edges.append(edge)
-                    build_tree(person.parent1_id, x - 150, y - 100, level + 1)
-            
-            if person.parent2_id:
-                if g.user.hasPrivacyLevel(person.parent2_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.parent2_id.id}-{person.id}",
-                        "source": str(person.parent2_id.id),
-                        "target": str(person.id),
-                        "label": "parent",
-                    }
-                    edges.append(edge)
-                    build_tree(person.parent2_id, x + 150, y - 100, level + 1)
+        for a, b in set(spouse_edges):
+            edges.append({
+                "id": f"spouse-{a}-{b}",
+                "source": str(a),
+                "target": str(b),
+                "sourceHandle": "right",
+                "targetHandle": "left",
+                "type": "straight",
+                "style": {"stroke": "#FF69B4", "strokeWidth": 2},
+            })
 
-            # Add the person's spouse as an edge if visible:
-            # Spouses are to the right of the person.
-            if person.spouse_id:
-                if g.user.hasPrivacyLevel(person.spouse_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.id}-{person.spouse_id.id}",
-                        "source": str(person.id),
-                        "target": str(person.spouse_id.id),
-                        "label": "spouse",
-                        "style": {"stroke": "#FF69B4", "strokeWidth": 2},
-                    }
-                    edges.append(edge)
-                    build_tree(person.spouse_id, x + 100, y, level)
-
-            # Add the person's children as edges if visible:
-            # Children are beneath the person and spread out if there are multiple.
-            children_list = Person.select().where(
-                (Person.parent1_id == person) | (Person.parent2_id == person)
-            )
-            for idx, child in enumerate(children_list):
-                if not g.user.hasPrivacyLevel(child.privacy):
-                    continue
-                
-                edge = {
-                    "id": f"edge-{person.id}-{child.id}",
-                    "source": str(person.id),
-                    "target": str(child.id),
-                    "label": "child",
-                }
-                edges.append(edge)
-                child_x = x + (idx - (len(children_list) - 1) / 2) * 200
-                build_tree(child, child_x, y + 150, level - 1)
-
-        # Build the tree:
-        build_tree(root_person)
-
-        # Return the tree:
-        return {
-            "nodes": nodes,
-            "edges": edges,
-        }, 200
+        return {"nodes": nodes, "edges": edges}, 200
 
 # Add the FamilyTreeEndpoint API endpoint:
 api.add_resource(FamilyTreeEndpoint, "/tree/<int:person_id>")
