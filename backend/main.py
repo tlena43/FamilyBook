@@ -1,8 +1,19 @@
 import os
+from dotenv import load_dotenv
+
+# Load .env from the current directory:
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(dotenv_path=env_path)
+
+# DEBUG: Check if secretKey was loaded...
+#secret_key = os.getenv('secretKey')
+#print(f"DEBUG: env_path = {env_path}")
+#print(f"DEBUG: secretKey = {secret_key}")
+#print(f"DEBUG: .env exists? {os.path.exists(env_path)}")
+
 from datetime import datetime
 import bcrypt
 import peewee
-from dotenv import load_dotenv
 from flask import Flask, abort, g, redirect, request, send_from_directory
 from flask_compress import Compress
 from flask_restful import Api, Resource
@@ -10,8 +21,6 @@ from pdf2image import convert_from_path
 from models import *
 from utilities import *
 from pyswip import Prolog
-
-load_dotenv()
 
 # Prolog engine initialization (rest of the code is down below):
 prolog_engine = Prolog()
@@ -59,6 +68,11 @@ def after_request(response):
     return response
 
 
+# =====================================================
+#                  CHECK LOGIN SECTION
+# =====================================================
+# Verifies that the user is authenticated and returns their privacy level.
+
 ##endpoints
 class CheckLoginEndpoint(Resource):
     @require_auth
@@ -68,6 +82,11 @@ class CheckLoginEndpoint(Resource):
 
 api.add_resource(CheckLoginEndpoint, "/loginCheck")
 
+
+# =====================================================
+#                  UPLOAD SECTION
+# =====================================================
+# Handles file uploads, downloads, and deletions for documents/images.
 
 class UploadEndpoint(Resource):
     @require_admin
@@ -117,6 +136,11 @@ class UploadEndpoint(Resource):
 api.add_resource(UploadEndpoint, "/upload", "/upload/<string:filename>")
 
 
+# =====================================================
+#                   CACHE SECTION
+# =====================================================
+# Generates and serves cached versions of PDFs (e.g., as images).
+
 class CacheEndpoint(Resource):
     def get(self, filename):
         makeCachedUpload(app, filename)
@@ -125,6 +149,11 @@ class CacheEndpoint(Resource):
 
 api.add_resource(CacheEndpoint, "/upload/cache/<string:filename>")
 
+
+# =====================================================
+#                PDF PAGES SECTION
+# =====================================================
+# Returns the number of pages in a PDF file.
 
 class PdfNumPagesEndpoint(Resource):
     def get(self, filename):
@@ -142,6 +171,11 @@ class PdfNumPagesEndpoint(Resource):
 
 api.add_resource(PdfNumPagesEndpoint, "/upload/num_pages/<string:filename>")
 
+
+# =====================================================
+#                   PERSON SECTION
+# =====================================================
+# CRUD operations for family members (create, read, update, delete).
 
 class PersonEndpoint(Resource):
     @require_admin
@@ -426,6 +460,11 @@ class PersonEndpoint(Resource):
 api.add_resource(PersonEndpoint, "/person", "/person/<int:id>")
 
 
+# =====================================================
+#                  CONTENT SECTION
+# =====================================================
+# CRUD operations for family documents and media content.
+
 class ContentEndpoint(Resource):
     @require_admin
     def post(self):
@@ -565,6 +604,11 @@ class ContentEndpoint(Resource):
 api.add_resource(ContentEndpoint, "/content", "/content/<int:id>")
 
 
+# =====================================================
+#                   GENDER SECTION
+# =====================================================
+# Returns list of available genders for person creation/editing.
+
 class GenderEndpoint(Resource):
     def get(self):
         gender_list = {"genders": []}
@@ -583,6 +627,10 @@ class GenderEndpoint(Resource):
 
 api.add_resource(GenderEndpoint, "/gender")
 
+# =====================================================
+#                    LOGIN SECTION
+# =====================================================
+# Authenticates users and returns auth token and privacy level.
 
 class LoginEndpoint(Resource):
     def post(self):
@@ -609,9 +657,64 @@ class LoginEndpoint(Resource):
 
 
 api.add_resource(LoginEndpoint, "/login")
+
+# =====================================================
+#                    SIGNUP SECTION
+# =====================================================
+# Registers new users with username, password validation, and auto-login.
+
+class SignupEndpoint(Resource):
+    def post(self):
+        data = get_json_or_400(required_fields=["username", "password", "passwordConfirm"])
+
+        username = data["username"].strip()
+        password = data["password"]
+        password_confirm = data["passwordConfirm"]
+
+        # Validate inputs:
+        if not username or len(username) < 3:
+            abort(400, description="Username must be at least 3 characters long.")
+        
+        if not password or len(password) < 6:
+            abort(400, description="Password must be at least 6 characters long.")
+        
+        if password != password_confirm:
+            abort(400, description="Passwords do not match.")
+
+        # Check if user already exists:
+        try:
+            User.get(User.username == username)
+            abort(400, description="Username already exists.")
+        except User.DoesNotExist:
+            pass
+
+        # Create new user with default privacy level (PUBLIC):
+        try:
+            public_privacy = Privacy.get(Privacy.level == "PUBLIC")
+        except Privacy.DoesNotExist:
+            abort(500, description="Default privacy level not found.")
+
+        hashed_password = bcrypt.hashpw(password.encode("utf8"), bcrypt.gensalt()).decode("utf8")
+        
+        new_user = User.create(
+            username=username,
+            password=hashed_password,
+            privacy=public_privacy
+        )
+
+        return {
+            "key": signer.sign(str(new_user.id)).decode("utf8"),
+            "privacyLevel": new_user.privacy.level,
+            "message": "Account created successfully!"
+        }, 201
+
+
+api.add_resource(SignupEndpoint, "/signup")
+
 # =====================================================
 #                    PROLOG SECTION
 # =====================================================
+# Prolog logic engine for inferring complex family relationships (sibling, cousin, etc.).
 
 # Load family_rules.pl from file:
 def initialize_prolog():
@@ -619,8 +722,17 @@ def initialize_prolog():
     global prolog_engine
     prolog_engine = Prolog()
     rules_file = os.path.join(APP_DIR, "prolog", "family_rules.pl")
+
     if os.path.exists(rules_file):
-        prolog_engine.consult(rules_file)
+        try:
+            # Use absolute path and escape it properly for Prolog:
+            escaped_path = rules_file.replace("\\", "\\\\").replace("'", "\\'")
+            prolog_engine.consult(escaped_path)
+            print(f"DEBUG: Loaded Prolog rules from {rules_file}")
+        except Exception as e:
+            print(f"WARNING: Failed to load Prolog rules: {e}")
+    else:
+        print(f"WARNING: Prolog rules file not found at {rules_file}")
 
 # Need to connect the database to the Prolog engine (note that we only want the base facts, rest is inferred):
 def load_prolog_facts(prolog_engine):
@@ -673,6 +785,11 @@ class QueryRelationshipEndpoint(Resource):
 # Register the QueryRelationshipEndpoing API endpoint:
 api.add_resource(QueryRelationshipEndpoint, "/query/relationship")
 
+# =====================================================
+#               FAMILY TREE SECTION
+# =====================================================
+# Generates family tree visualization data as React Flow nodes and edges.
+
 # Need to build an endpoint that gets family tree data as React Flow nodes and edges, then displays them:
 # For AUTHORIZED users only!!!
 class FamilyTreeEndpoint(Resource):
@@ -682,15 +799,12 @@ class FamilyTreeEndpoint(Resource):
         # Start with our "root" person:
         try:
             root_person = Person.get(Person.id == person_id)
-        except Person.DoesNoteExist:
+        except Person.DoesNotExist:
             abort(404)
 
         # Check the person's privacy level (based on utilities.py):
-        if not g.user.hasPriavcyLevel(root_person.privacy):
+        if not g.user.hasPrivacyLevel(root_person.privacy):
             abort(403)
-
-        # Reload Prolog facts:
-        load_prolog_facts(prolog_engine)
 
         # Build tree structure:
         nodes = []
@@ -764,10 +878,10 @@ class FamilyTreeEndpoint(Resource):
 
             # Add the person's children as edges if visible:
             # Children are beneath the person and spread out if there are multiple.
-            children = Person.select().where(
+            children_list = Person.select().where(
                 (Person.parent1_id == person) | (Person.parent2_id == person)
             )
-            for idx, child in enumerate(children):
+            for idx, child in enumerate(children_list):
                 if not g.user.hasPrivacyLevel(child.privacy):
                     continue
                 
@@ -778,25 +892,23 @@ class FamilyTreeEndpoint(Resource):
                     "label": "child",
                 }
                 edges.append(edge)
-                children_list = list(children)
-                for idx, child in enumerate(children_list):
-                    child_x = x + (idx - (len(children_list) - 1) / 2) * 200
-                    build_tree(child, child_x, y + 150, level - 1)
+                child_x = x + (idx - (len(children_list) - 1) / 2) * 200
+                build_tree(child, child_x, y + 150, level - 1)
 
-            # Build the tree:
-            build_tree(root_person)
+        # Build the tree:
+        build_tree(root_person)
 
-            # Return the tree:
-            return {
-                "nodes": nodes,
-                "edges": edges,
-            }, 200
+        # Return the tree:
+        return {
+            "nodes": nodes,
+            "edges": edges,
+        }, 200
 
 # Add the FamilyTreeEndpoint API endpoint:
 api.add_resource(FamilyTreeEndpoint, "/tree/<int:person_id>")
 
 # Initialize Prolog when the application starts:
-initialize_prolog()
+#initialize_prolog()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)

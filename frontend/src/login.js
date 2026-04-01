@@ -62,6 +62,15 @@ const LoginPage = () => {
 
           <input type="submit" value="Submit" />
         </form>
+
+        <div className="inner-wrap" style={{ marginTop: "20px", textAlign: "center" }}>
+          <p>
+            Don't have an account?{" "}
+            <a href="/signup" style={{ color: "blue", textDecoration: "underline", cursor: "pointer" }}>
+              Sign up here
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
