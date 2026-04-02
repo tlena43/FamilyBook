@@ -87,68 +87,223 @@ def assign_generations(root_id, people, parent_edges, spouse_edges):
 
     return generation
 
-def group_by_generation(generation):
-    rows = defaultdict(list)
+
+
+def format_years(person):
+    birth = str(person.birthDay.year) if person.birthDay else "?"
+    death = str(person.deathDay.year) if person.deathDay else ""
+    return f"{birth}–{death}" if death else f"{birth}–"
+
+def align_last_generation_under_parents(
+    positions,
+    generation,
+    two_parent_families,
+    single_parent_families,
+    node_width=160,
+    child_spacing=120,
+):
+    if not generation:
+        return
+
+    last_gen = max(generation.values())
+
+    # Two-parent families
+    for (p1_id, p2_id), child_ids in two_parent_families.items():
+        last_gen_children = [cid for cid in child_ids if generation.get(cid) == last_gen and cid in positions]
+        if not last_gen_children:
+            continue
+
+        if p1_id not in positions or p2_id not in positions:
+            continue
+
+        p1_center = positions[p1_id]["x"] + node_width / 2
+        p2_center = positions[p2_id]["x"] + node_width / 2
+        family_center = (p1_center + p2_center) / 2
+
+        start_x = family_center - ((len(last_gen_children) - 1) * child_spacing) / 2 - node_width / 2
+
+        # stable left-to-right order
+        last_gen_children = sorted(last_gen_children)
+
+        for i, child_id in enumerate(last_gen_children):
+            positions[child_id]["x"] = start_x + i * child_spacing
+
+    # Single-parent families
+    for parent_id, child_ids in single_parent_families.items():
+        last_gen_children = [cid for cid in child_ids if generation.get(cid) == last_gen and cid in positions]
+        if not last_gen_children:
+            continue
+
+        if parent_id not in positions:
+            continue
+
+        parent_center = positions[parent_id]["x"] + node_width / 2
+        start_x = parent_center - ((len(last_gen_children) - 1) * child_spacing) / 2 - node_width / 2
+
+        last_gen_children = sorted(last_gen_children)
+
+        for i, child_id in enumerate(last_gen_children):
+            positions[child_id]["x"] = start_x + i * child_spacing
+            
+def center_generation_over_children(
+    positions,
+    generation,
+    two_parent_families,
+    single_parent_families,
+    target_generation,
+    node_width=160,
+    spouse_gap=40,
+):
+    """
+    Reposition one generation so each parent pair is centered over its children.
+    target_generation is the parent row to move.
+    """
+
+    # Two-parent families
+    for (p1_id, p2_id), child_ids in two_parent_families.items():
+        if generation.get(p1_id) != target_generation:
+            continue
+
+        if p1_id not in positions or p2_id not in positions:
+            continue
+
+        visible_children = [cid for cid in child_ids if cid in positions]
+        if not visible_children:
+            continue
+
+        child_centers = [positions[cid]["x"] + node_width / 2 for cid in visible_children]
+        family_center = sum(child_centers) / len(child_centers)
+
+        total_width = (2 * node_width) + spouse_gap
+        left_x = family_center - (total_width / 2)
+
+        positions[p1_id]["x"] = left_x
+        positions[p2_id]["x"] = left_x + node_width + spouse_gap
+
+    # Single-parent families
+    for parent_id, child_ids in single_parent_families.items():
+        if generation.get(parent_id) != target_generation:
+            continue
+
+        if parent_id not in positions:
+            continue
+
+        visible_children = [cid for cid in child_ids if cid in positions]
+        if not visible_children:
+            continue
+
+        child_centers = [positions[cid]["x"] + node_width / 2 for cid in visible_children]
+        family_center = sum(child_centers) / len(child_centers)
+
+        positions[parent_id]["x"] = family_center - node_width / 2
+        
+def add_edge_once(edge_list, added, edge):
+    key = (
+        edge["source"],
+        edge["target"],
+        edge.get("sourceHandle"),
+        edge.get("targetHandle"),
+        edge.get("type"),
+    )
+    if key in added:
+        return
+    added.add(key)
+    edge_list.append(edge)
+
+def add_junction_node(node_list, added, node_id, x, y):
+    if node_id in added:
+        return
+    node_list.append({
+        "id": node_id,
+        "type": "familyJunction",
+        "data": {"label": ""},
+        "position": {"x": x, "y": y},
+        "draggable": False,
+        "selectable": False,
+    })
+    added.add(node_id)
+
+def build_rows(generation):
+    rows = {}
     for pid, gen in generation.items():
-        rows[gen].append(pid)
+        rows.setdefault(gen, []).append(pid)
     return rows
 
-def initial_row_order(rows, people):
-    for gen in rows:
-        rows[gen].sort(key=lambda pid: (
-            people[pid].lastName or "",
-            people[pid].firstName or ""
-        ))
-    return rows
-
-def assign_positions(rows, generation, h_spacing=240, v_spacing=180):
-    positions = {}
-    for gen in sorted(rows.keys()):
-        row = rows[gen]
-        start_x = -((len(row) - 1) * h_spacing) / 2
-        y = gen * v_spacing
-        for i, pid in enumerate(row):
-            positions[pid] = {
-                "x": start_x + i * h_spacing,
-                "y": y
-            }
-    return positions
-
-def keep_spouses_adjacent(rows, spouse_edges):
+def build_spouse_map(spouse_edges):
     spouse_map = {}
     for a, b in spouse_edges:
         spouse_map.setdefault(a, set()).add(b)
         spouse_map.setdefault(b, set()).add(a)
+    return spouse_map
 
-    for gen, row in rows.items():
+def order_rows(rows, spouse_map):
+    ordered = {}
+    for gen in sorted(rows.keys()):
+        row = sorted(rows[gen])
+        used = set()
+        out = []
+
+        for pid in row:
+            if pid in used:
+                continue
+
+            spouses = [s for s in spouse_map.get(pid, set()) if s in row and s not in used]
+            if spouses:
+                sid = sorted(spouses)[0]
+                pair = sorted([pid, sid])
+                out.extend(pair)
+                used.add(pid)
+                used.add(sid)
+            else:
+                out.append(pid)
+                used.add(pid)
+
+        ordered[gen] = out
+    return ordered
+
+def assign_positions(rows, spouse_edges, H_SPACING=200, V_SPACING=150, NODE_WIDTH=160, SPOUSE_GAP=40):
+    positions = {}
+    for gen in sorted(rows.keys()):
+        row = rows[gen]
+        start_x = -((len(row) - 1) * H_SPACING) / 2
+        y = gen * V_SPACING
+
         i = 0
-        while i < len(row) - 1:
+        while i < len(row):
             pid = row[i]
-            spouses = spouse_map.get(pid, set())
 
-            spouse_index = None
-            for j in range(i + 1, len(row)):
-                if row[j] in spouses:
-                    spouse_index = j
-                    break
+            # keep spouses tighter together if adjacent spouse pair
+            if i + 1 < len(row):
+                next_id = row[i + 1]
+                if tuple(sorted((pid, next_id))) in set(tuple(sorted(x)) for x in spouse_edges):
+                    pair_x = start_x + i * H_SPACING
+                    positions[pid] = {"x": pair_x, "y": y}
+                    positions[next_id] = {"x": pair_x + NODE_WIDTH + SPOUSE_GAP, "y": y}
+                    i += 2
+                    continue
 
-            if spouse_index is not None and spouse_index != i + 1:
-                spouse_id = row.pop(spouse_index)
-                row.insert(i + 1, spouse_id)
-
+            positions[pid] = {"x": start_x + i * H_SPACING, "y": y}
             i += 1
 
-    return rows
+    return positions
 
-def build_family_units(people):
-    families = defaultdict(list)
+def build_family_groups(people):
+    two_parent = {}
+    single_parent = {}
 
-    for child in people.values():
-        p1 = child.parent1_id.id if child.parent1_id and child.parent1_id.id in people else None
-        p2 = child.parent2_id.id if child.parent2_id and child.parent2_id.id in people else None
+    for person in people.values():
+        parents = []
 
-        key = tuple(sorted([x for x in [p1, p2] if x is not None]))
-        if key:
-            families[key].append(child.id)
+        if person.parent1_id and person.parent1_id.id in people:
+            parents.append(person.parent1_id.id)
+        if person.parent2_id and person.parent2_id.id in people:
+            parents.append(person.parent2_id.id)
 
-    return families
+        parents = sorted(set(parents))
+
+        if len(parents) == 2:
+            two_parent.setdefault((parents[0], parents[1]), []).append(person.id)
+        elif len(parents) == 1:
+            single_parent.setdefault(parents[0], []).append(person.id)
+
+    return two_parent, single_parent

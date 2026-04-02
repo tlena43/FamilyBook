@@ -22,6 +22,7 @@ from models import *
 from utilities import *
 from pyswip import Prolog
 from familyTree import *
+from collections import defaultdict
 
 # Prolog engine initialization (rest of the code is down below):
 prolog_engine = Prolog()
@@ -805,24 +806,107 @@ class FamilyTreeEndpoint(Resource):
             abort(403)
 
         people, parent_edges, spouse_edges = collect_family(root_person)
+
+        NODE_WIDTH = 160
+        H_SPACING = 220
+        V_SPACING = 180
+        SPOUSE_GAP = 40
+        NODE_HEIGHT = 60  
+        
+        
+        FAMILY_COLORS = [
+            "#6C8AE4",  
+            "#8B2908",  
+            "#07572B",  
+            "#6E165B",  
+            "#628103",  
+            "#0A8488",  
+            "#805C08",  
+        ]
+
+
+
         generation = assign_generations(root_person.id, people, parent_edges, spouse_edges)
-        rows = group_by_generation(generation)
-        rows = initial_row_order(rows, people)
-        rows = keep_spouses_adjacent(rows, spouse_edges)
-        positions = assign_positions(rows, generation)
+        rows = build_rows(generation)
+        spouse_map = build_spouse_map(spouse_edges)
+        rows = order_rows(rows, spouse_map)
+        positions = assign_positions(rows, spouse_edges,H_SPACING, V_SPACING, NODE_WIDTH, SPOUSE_GAP)
+        
+
+        two_parent_families, single_parent_families = build_family_groups(people)
+        
+        align_last_generation_under_parents(
+            positions,
+            generation,
+            two_parent_families,
+            single_parent_families,
+            node_width=NODE_WIDTH,
+            child_spacing=200,
+        )
+        
+        maxGen = max(generation.values()) - 1
+
+        for gen in range(1, maxGen):
+            center_generation_over_children(
+                positions,
+                generation,
+                two_parent_families,
+                single_parent_families,
+                target_generation=gen,
+                node_width=NODE_WIDTH,
+                spouse_gap=40,
+            )
+
+        
+        family_row_offsets = {}
+        families_by_generation = defaultdict(list)
+        
+        family_colors = {}
+        gen_family_index = {}
+
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id not in generation:
+                continue
+
+            gen = generation[p1_id]
+
+            if gen not in gen_family_index:
+                gen_family_index[gen] = 0
+
+            color_idx = gen_family_index[gen] % len(FAMILY_COLORS)
+            gen_family_index[gen] += 1
+
+            family_colors[(p1_id, p2_id)] = FAMILY_COLORS[color_idx]
+
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id in generation:
+                gen = generation[p1_id]
+                families_by_generation[gen].append(("two", p1_id, p2_id))
+
+        for parent_id, child_ids in single_parent_families.items():
+            if parent_id in generation:
+                gen = generation[parent_id]
+                families_by_generation[gen].append(("one", parent_id))
+
+        for gen, fams in families_by_generation.items():
+            fams.sort()
+            for idx, fam in enumerate(fams):
+                family_row_offsets[fam] = idx % 3
 
         nodes = []
         edges = []
+        added_nodes = set()
+        added_edges = set()
 
         for pid, person in people.items():
             gender_name = (person.gender.name or "").lower()
+
             nodes.append({
                 "id": str(pid),
                 "type": "person",
                 "data": {
                     "label": f"{person.firstName} {person.lastName}",
-                    "birthDay": str(person.birthDay) if person.birthDay else "Unknown",
-                    "gender": person.gender.name,
+                    "years": format_years(person),
                 },
                 "position": positions[pid],
                 "style": {
@@ -830,28 +914,108 @@ class FamilyTreeEndpoint(Resource):
                     "border": "2px solid #333",
                     "borderRadius": "8px",
                     "padding": "10px",
+                    "width": NODE_WIDTH,
                 }
             })
+            added_nodes.add(str(pid))
 
-        for parent_id, child_id in set(parent_edges):
-            edges.append({
-                "id": f"parent-{parent_id}-{child_id}",
-                "source": str(parent_id),
-                "target": str(child_id),
-                "sourceHandle": "bottom",
-                "targetHandle": "top",
-            })
-
+        # spouse lines
         for a, b in set(spouse_edges):
-            edges.append({
-                "id": f"spouse-{a}-{b}",
-                "source": str(a),
-                "target": str(b),
+            if a not in positions or b not in positions:
+                continue
+
+            if positions[a]["x"] <= positions[b]["x"]:
+                source_id, target_id = a, b
+            else:
+                source_id, target_id = b, a
+
+            add_edge_once(edges, added_edges, {
+                "id": f"spouse-{source_id}-{target_id}",
+                "source": str(source_id),
+                "target": str(target_id),
                 "sourceHandle": "right",
                 "targetHandle": "left",
                 "type": "straight",
-                "style": {"stroke": "#FF69B4", "strokeWidth": 2},
+                "style": {
+                    "stroke": "#FF69B4",
+                    "strokeWidth": 2,
+                },
             })
+
+        # two-parent children: one shared drop only
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id not in positions or p2_id not in positions:
+                continue
+
+            visible_children = [cid for cid in child_ids if cid in positions]
+            if not visible_children:
+                continue
+
+            p1_center = positions[p1_id]["x"] + NODE_WIDTH / 2
+            p2_center = positions[p2_id]["x"] + NODE_WIDTH / 2
+            mid_x = (p1_center + p2_center) / 2
+
+            # This is the y-position of the spouse line / node midpoint
+            attach_y = positions[p1_id]["y"] + NODE_HEIGHT / 2
+
+            # This is your staggered routing height
+            offset_band = family_row_offsets.get(("two", p1_id, p2_id), 0)
+            route_y = positions[p1_id]["y"] + NODE_HEIGHT + 25 + (offset_band * 24)
+
+            attach_id = f"attach-{p1_id}-{p2_id}"
+            route_id = f"route-{p1_id}-{p2_id}"
+
+            add_junction_node(nodes, added_nodes, attach_id, mid_x, attach_y)
+            add_junction_node(nodes, added_nodes, route_id, mid_x, route_y)
+
+            color = family_colors.get((p1_id, p2_id), "#777777")
+
+            # short vertical from spouse line down to routed level
+            add_edge_once(edges, added_edges, {
+                "id": f"{attach_id}-{route_id}",
+                "source": attach_id,
+                "target": route_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": color,
+                    "strokeWidth": 2,
+                },
+            })
+
+            for child_id in visible_children:
+                add_edge_once(edges, added_edges, {
+                    "id": f"{route_id}-{child_id}",
+                    "source": route_id,
+                    "target": str(child_id),
+                    "sourceHandle": "bottom",
+                    "targetHandle": "top",
+                    "type": "step",
+                    "style": {
+                        "stroke": color,
+                        "strokeWidth": 2,
+                    },
+                })
+
+        # single-parent children: direct line
+        for parent_id, child_ids in single_parent_families.items():
+            if parent_id not in positions:
+                continue
+
+            for child_id in child_ids:
+                if child_id not in positions:
+                    continue
+
+                add_edge_once(edges, added_edges, {
+                    "id": f"{parent_id}-{child_id}",
+                    "source": str(parent_id),
+                    "target": str(child_id),
+                    "sourceHandle": "bottom",
+                    "targetHandle": "top",
+                    "type": "step",
+                    "style": {"strokeWidth": 1.5},
+                })
 
         return {"nodes": nodes, "edges": edges}, 200
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import PersonNode from './PersonNode.js';
+import FamilyJunctionNode from './FamilyJunctionNode.js';
 
 
 // This function fetches tree data, stores it, and passes it to React Flow.
@@ -17,6 +18,7 @@ function Flow({ personId }) {
 
   const nodeTypes = {
   person: PersonNode,
+  familyJunction: FamilyJunctionNode,
 };
 
   // Fetching data... (this runs whenever personId changes or whenever the component mounts)

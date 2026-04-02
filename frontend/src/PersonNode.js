@@ -6,6 +6,7 @@ export default function PersonNode({ data }) {
     <div
       style={{
         textAlign: 'center',
+        width: 120,
       }}
     >
       <Handle type="target" position={Position.Top} id="top" style={{opacity: 0}} />
@@ -15,10 +16,7 @@ export default function PersonNode({ data }) {
 
       <div style={{ fontWeight: 'bold' }}>{data.label}</div>
       <div style={{ fontSize: '12px' }}>
-        Born: {data.birthDay}
-      </div>
-      <div style={{ fontSize: '12px' }}>
-        Gender: {data.gender}
+        {data.years}
       </div>
     </div>
   );

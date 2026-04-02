@@ -300,48 +300,48 @@ def seed_family_tree():
     # Add a second marriage + half-sibling branch
     # -------------------------
     # Daniel's first spouse Lauren dies; Daniel remarries.
-    people["lauren"].deathDay = date(2018, 1, 12)
-    people["lauren"].deathDateUnknowns = 0
-    people["lauren"].isDead = True
-    people["lauren"].save()
+    #people["lauren"].deathDay = date(2018, 1, 12)
+    #people["lauren"].deathDateUnknowns = 0
+    #people["lauren"].isDead = True
+    #people["lauren"].save()
 
-    people["daniel"].spouse_id = None
-    people["daniel"].save()
-    people["lauren"].spouse_id = None
-    people["lauren"].save()
+    #people["daniel"].spouse_id = None
+    #people["daniel"].save()
+    #people["lauren"].spouse_id = None
+    #people["lauren"].save()
 
-    create_person(
-        people, "rachel", "Rachel", "Bennett", 
-        birth_date=date(1989, 9, 29), birth_place="Boise", maiden_name="Adams"
-    )
-    set_spouses(people["daniel"], people["rachel"])
+    #create_person(
+    #    people, "rachel", "Rachel", "Bennett", 
+    #    birth_date=date(1989, 9, 29), birth_place="Boise", maiden_name="Adams"
+    #)
+    #set_spouses(people["daniel"], people["rachel"])
 
-    create_person(
-        people, "ivy", "Ivy", "Bennett", 
-        birth_date=date(2021, 6, 17), birth_place="Boise"
-    )
-    set_parents(people["ivy"], people["daniel"], people["rachel"])
+    #create_person(
+    #    people, "ivy", "Ivy", "Bennett", 
+    #    birth_date=date(2021, 6, 17), birth_place="Boise"
+    #)
+    #set_parents(people["ivy"], people["daniel"], people["rachel"])
 
     # -------------------------
     # Add another divorce/remarriage branch
     # -------------------------
     # Patricia and George separate; Henry remains their child.
-    people["george"].spouse_id = None
-    people["george"].save()
-    people["patricia"].spouse_id = None
-    people["patricia"].save()
+    #people["george"].spouse_id = None
+    #people["george"].save()
+    #people["patricia"].spouse_id = None
+    #people["patricia"].save()
 
-    create_person(
-        people, "steven", "Steven", "Hall", 
-        birth_date=date(1960, 3, 2), birth_place="Detroit"
-    )
-    set_spouses(people["patricia"], people["steven"])
+    #create_person(
+    #    people, "steven", "Steven", "Hall", 
+    #    birth_date=date(1960, 3, 2), birth_place="Detroit"
+    #)
+    #set_spouses(people["patricia"], people["steven"])
 
-    create_person(
-        people, "hannah", "Hannah", "Hall", 
-        birth_date=date(1998, 2, 8), birth_place="Chicago"
-    )
-    set_parents(people["hannah"], people["steven"], people["patricia"])
+    #create_person(
+    #    people, "hannah", "Hannah", "Hall", 
+    #    birth_date=date(1998, 2, 8), birth_place="Chicago"
+    #)
+    #set_parents(people["hannah"], people["steven"], people["patricia"])
 
     print(f"Seeded {len(people)} people successfully.")
 
