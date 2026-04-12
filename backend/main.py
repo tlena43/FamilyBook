@@ -84,6 +84,30 @@ api.add_resource(CheckLoginEndpoint, "/loginCheck")
 
 
 # =====================================================
+#                  ADMIN USERS SECTION
+# =====================================================
+# Admin-only endpoint to list user accounts (no passwords returned).
+
+class AdminUsersEndpoint(Resource):
+    @require_admin
+    def get(self):
+        users = []
+        for u in User.select().order_by(User.id):
+            users.append(
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "privacyLevel": u.privacy.level,
+                }
+            )
+
+        return {"users": users}, 200
+
+
+api.add_resource(AdminUsersEndpoint, "/admin/users")
+
+
+# =====================================================
 #                  UPLOAD SECTION
 # =====================================================
 # Handles file uploads, downloads, and deletions for documents/images.
@@ -721,29 +745,47 @@ def initialize_prolog():
     """Initialize the Prolog engine with our family rules."""
     global prolog_engine
     prolog_engine = Prolog()
-    rules_file = os.path.join(APP_DIR, "prolog", "family_rules.pl")
 
-    if os.path.exists(rules_file):
-        try:
-            # Use absolute path and escape it properly for Prolog:
-            escaped_path = rules_file.replace("\\", "\\\\").replace("'", "\\'")
-            prolog_engine.consult(escaped_path)
-            print(f"DEBUG: Loaded Prolog rules from {rules_file}")
-        except Exception as e:
-            print(f"WARNING: Failed to load Prolog rules: {e}")
-    else:
+    rules_file = os.path.abspath(os.path.join(APP_DIR, "prolog", "family_rules.pl"))
+
+    if not os.path.exists(rules_file):
         print(f"WARNING: Prolog rules file not found at {rules_file}")
+        return
+
+    try:
+        # Direct consult is clearer and works when PySwip is healthy.
+        prolog_engine.consult(rules_file)
+
+        # Sanity check that the engine can execute queries.
+        list(prolog_engine.query("true"))
+
+        print(f"DEBUG: Successfully loaded Prolog rules from {rules_file}")
+    except Exception as e:
+        print(f"WARNING: Failed to load Prolog rules from {rules_file}")
+        print(f"WARNING: Error: {e}")
+
 
 # Need to connect the database to the Prolog engine (note that we only want the base facts, rest is inferred):
 def load_prolog_facts(prolog_engine):
     """This function loads a person's data from the database in the form of Prolog facts."""
+
+    # Clear previously asserted dynamic facts to prevent duplicates across requests.
+    try:
+        list(prolog_engine.query("retractall(parent(_,_))"))
+        list(prolog_engine.query("retractall(male(_))"))
+        list(prolog_engine.query("retractall(female(_))"))
+        list(prolog_engine.query("retractall(spouse(_,_))"))
+    except Exception:
+        # If retractall fails (e.g., predicates not yet exist), ignore.
+        pass
+
     for person in Person.select():
         # Male or female:
         if person.gender.name == "male":
             prolog_engine.assertz(f"male({person.id})")
         else:
             prolog_engine.assertz(f"female({person.id})")
-        
+
         # Parent or spouse:
         # Parent follows parent(parent, person).
         # Spouse follows spouse(person, spouse).
@@ -765,13 +807,38 @@ class QueryRelationshipEndpoint(Resource):
         # Split data by person + relationship:
         person1_id = int(data["person1_id"])
         person2_id = int(data["person2_id"])
-        relationship = data["relationship"]
+        relationship = (data["relationship"] or "").strip()
+
+        # Allow-list predicates to avoid arbitrary Prolog execution.
+        allowed_relationships = {
+            "parent",
+            "spouse",
+            "sibling",
+            "brother",
+            "sister",
+            "grandparent",
+            "grandfather",
+            "grandmother",
+            "child",
+            "son",
+            "daughter",
+            "ancestor",
+            "descendant",
+            "cousin",
+            "aunt",
+            "uncle",
+            "niece",
+            "nephew",
+        }
+
+        if relationship not in allowed_relationships:
+            abort(400, description="Unknown or unsupported relationship predicate.")
 
         # Reload facts each time this endpoint is called (can improve by implementing catching!):
         load_prolog_facts(prolog_engine)
 
         # Build the Prolog query, run it, and handle any surfacing errors:
-        try: 
+        try:
             query = f"{relationship}({person1_id}, {person2_id})"
             result = list(prolog_engine.query(query))
 
@@ -908,7 +975,7 @@ class FamilyTreeEndpoint(Resource):
 api.add_resource(FamilyTreeEndpoint, "/tree/<int:person_id>")
 
 # Initialize Prolog when the application starts:
-#initialize_prolog()
+initialize_prolog()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
