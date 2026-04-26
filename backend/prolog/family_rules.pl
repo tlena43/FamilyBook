@@ -152,6 +152,15 @@ great_great_grandparent(GreatGreatGrandparent, Person) :-
     parent(GreatGreatGrandparent, Ancestor),
     great_grandparent(Ancestor, Person).
 
+great_great_grandmother(GreatGreatGrandmother, Person) :-
+    great_great_grandparent(GreatGreatGrandmother, Person),
+    female(GreatGreatGrandmother).
+
+great_great_grandfather(GreatGreatGrandfather, Person) :-
+    great_great_grandparent(GreatGreatGrandfather, Person),
+    male(GreatGreatGrandfather).
+
+
 great_great_great_grandparent(GreatGreatGreatGrandparent, Person) :-
     parent(GreatGreatGreatGrandparent, Ancestor),
     great_great_grandparent(Ancestor, Person).
@@ -196,27 +205,131 @@ nephew(Nephew, Person) :-
     pibling(Person, Nephew),
     male(Nephew).
 
+/* =========================================================
+   Extended nibling-pibling relationships
+   ========================================================= */
+grand_pibling(GrandPibling, Person) :-
+    grandparent(Grandparent, Person),
+    sibling(GrandPibling, Grandparent).
+
+grand_aunt(GrandAunt, Person) :-
+    grand_pibling(GrandAunt, Person),
+    female(GrandAunt).
+
+grand_uncle(GrandUncle, Person) :-
+    grand_pibling(GrandUncle, Person),
+    male(GrandUncle).
+
+great_grand_pibling(GreatGrandPibling, Person) :-
+    great_grandparent(GreatGrandparent, Person),
+    sibling(GreatGrandPibling, GreatGrandparent).
+
+great_grand_aunt(GreatGrandAunt, Person) :-
+    great_grand_pibling(GreatGrandAunt, Person),
+    female(GreatGrandAunt).
+
+great_grand_uncle(GreatGrandUncle, Person) :-
+    great_grand_pibling(GreatGrandUncle, Person),
+    male(GreatGrandUncle).
+
+grand_niece(GrandNiece, Person) :-
+    niece(Niece, Person),
+    parent(Niece, GrandNiece),
+    female(GrandNiece).
+
+grand_nephew(GrandNephew, Person) :-
+    nephew(Nephew, Person),
+    parent(Nephew, GrandNephew),
+    male(GrandNephew).
+
 
 /* =========================================================
    Cousin relationships
    ========================================================= */
 
-cousin(X, Y) :-
+/* =========================================================
+   Cousin relationships
+   ========================================================= */
+
+% First cousins: children of siblings.
+first_cousin(X, Y) :-
     parent(Parent1, X),
     parent(Parent2, Y),
     sibling(Parent1, Parent2),
     X \= Y.
 
-first_cousin(X, Y) :-
-    cousin(X, Y).
+cousin(X, Y) :-
+    first_cousin(X, Y).
 
-cousin_once_removed(X, Y) :-
+first_cousin_once_removed(X, Y) :-
     (
         parent(Parent, X),
-        cousin(Parent, Y)
+        first_cousin(Parent, Y)
     ;
         parent(Parent, Y),
-        cousin(X, Parent)
+        first_cousin(X, Parent)
+    ),
+    X \= Y.
+
+first_cousin_twice_removed(X, Y) :-
+    (
+        parent(Parent, X),
+        first_cousin_once_removed(Parent, Y)
+    ;
+        parent(Parent, Y),
+        first_cousin_once_removed(X, Parent)
+    ),
+    X \= Y.
+
+second_cousin(X, Y) :-
+    parent(Parent1, X),
+    parent(Parent2, Y),
+    first_cousin(Parent1, Parent2),
+    X \= Y.
+
+second_cousin_once_removed(X, Y) :-
+    (
+        parent(Parent, X),
+        second_cousin(Parent, Y)
+    ;
+        parent(Parent, Y),
+        second_cousin(X, Parent)
+    ),
+    X \= Y.
+
+second_cousin_twice_removed(X, Y) :-
+    (
+        parent(Parent, X),
+        second_cousin_once_removed(Parent, Y)
+    ;
+        parent(Parent, Y),
+        second_cousin_once_removed(X, Parent)
+    ),
+    X \= Y.
+
+third_cousin(X, Y) :-
+    parent(Parent1, X),
+    parent(Parent2, Y),
+    second_cousin(Parent1, Parent2),
+    X \= Y.
+
+third_cousin_once_removed(X, Y) :-
+    (
+        parent(Parent, X),
+        third_cousin(Parent, Y)
+    ;
+        parent(Parent, Y),
+        third_cousin(X, Parent)
+    ),
+    X \= Y.
+
+third_cousin_twice_removed(X, Y) :-
+    (
+        parent(Parent, X),
+        third_cousin_once_removed(Parent, Y)
+    ;
+        parent(Parent, Y),
+        third_cousin_once_removed(X, Parent)
     ),
     X \= Y.
 

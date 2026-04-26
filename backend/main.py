@@ -950,7 +950,7 @@ class FamilyTreeEndpoint(Resource):
             node_width=NODE_WIDTH,
             spouse_gap=SPOUSE_GAP,
         )
-        
+
         center_top_families_over_immediate_children(
             positions,
             generation,
@@ -959,7 +959,7 @@ class FamilyTreeEndpoint(Resource):
             node_width=NODE_WIDTH,
             spouse_gap=SPOUSE_GAP,
         )
-        
+
         spread_top_family_blocks(
             positions,
             generation,
@@ -1021,6 +1021,7 @@ class FamilyTreeEndpoint(Resource):
         added_nodes = set()
         added_edges = set()
 
+        # Person nodes
         for pid, person in people.items():
             gender_name = (person.gender.name or "").lower()
 
@@ -1030,6 +1031,7 @@ class FamilyTreeEndpoint(Resource):
                 "data": {
                     "label": f"{person.firstName} {person.lastName}",
                     "years": format_years(person),
+                    "personId": pid,
                 },
                 "position": positions[pid],
                 "style": {
@@ -1042,6 +1044,7 @@ class FamilyTreeEndpoint(Resource):
             })
             added_nodes.add(str(pid))
 
+        # Spouse edges (keep these for visual spouse links)
         for a, b in set(spouse_edges):
             if a not in positions or b not in positions:
                 continue
@@ -1055,8 +1058,8 @@ class FamilyTreeEndpoint(Resource):
                 "id": f"spouse-{source_id}-{target_id}",
                 "source": str(source_id),
                 "target": str(target_id),
-                "sourceHandle": "right",
-                "targetHandle": "left",
+                "sourceHandle": "spouse-right",
+                "targetHandle": "spouse-left",
                 "type": "straight",
                 "style": {
                     "stroke": "#FF69B4",
@@ -1064,6 +1067,10 @@ class FamilyTreeEndpoint(Resource):
                 },
             })
 
+        # Two-parent families
+        # Keep the original clean visual shape:
+        # spouse line is visible, attach->route is visible, route->child is visible.
+        # Add hidden parent->attach edges only so BFS can traverse the graph.
         for (p1_id, p2_id), child_ids in two_parent_families.items():
             if p1_id not in positions or p2_id not in positions:
                 continue
@@ -1076,20 +1083,26 @@ class FamilyTreeEndpoint(Resource):
             p2_center = positions[p2_id]["x"] + NODE_WIDTH / 2
             mid_x = (p1_center + p2_center) / 2
 
+            # midpoint of spouse row
             attach_y = positions[p1_id]["y"] + NODE_HEIGHT / 2
             offset_band = family_row_offsets.get(("two", p1_id, p2_id), 0)
             route_y = positions[p1_id]["y"] + NODE_HEIGHT + 25 + (offset_band * 24)
 
             attach_id = f"attach-{p1_id}-{p2_id}"
             route_id = f"route-{p1_id}-{p2_id}"
-            
             color = family_colors.get((p1_id, p2_id), "#777777")
-
 
             add_junction_node(nodes, added_nodes, attach_id, mid_x, attach_y, "#FF69B4")
             add_junction_node(nodes, added_nodes, route_id, mid_x, route_y, color)
 
+            # add metadata so frontend can highlight the top parent people too
+            for n in nodes:
+                if n["id"] == route_id:
+                    n["data"]["familyType"] = "two"
+                    n["data"]["parentIds"] = [p1_id, p2_id]
+                    break
 
+            # VISIBLE: midpoint drops down into the child route
             add_edge_once(edges, added_edges, {
                 "id": f"{attach_id}-{route_id}",
                 "source": attach_id,
@@ -1103,6 +1116,7 @@ class FamilyTreeEndpoint(Resource):
                 },
             })
 
+            # VISIBLE: route fans out to children
             for child_id in visible_children:
                 add_edge_once(edges, added_edges, {
                     "id": f"{route_id}-{child_id}",
@@ -1117,6 +1131,39 @@ class FamilyTreeEndpoint(Resource):
                     },
                 })
 
+            # HIDDEN: connect parents into the graph for traversal only
+            add_edge_once(edges, added_edges, {
+                "id": f"hidden-{p1_id}-{attach_id}",
+                "source": str(p1_id),
+                "target": attach_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": "rgba(0,0,0,0)",
+                    "strokeWidth": 0,
+                },
+                "selectable": False,
+                "focusable": False,
+            })
+
+            add_edge_once(edges, added_edges, {
+                "id": f"hidden-{p2_id}-{attach_id}",
+                "source": str(p2_id),
+                "target": attach_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": "rgba(0,0,0,0)",
+                    "strokeWidth": 0,
+                },
+                "selectable": False,
+                "focusable": False,
+            })
+
+        # Single-parent families
+        # Keep the original clean visual shape and add one hidden connector edge.
         for parent_id, child_ids in single_parent_families.items():
             if parent_id not in positions:
                 continue
@@ -1134,10 +1181,16 @@ class FamilyTreeEndpoint(Resource):
             route_id = f"single-route-{parent_id}"
             color = single_family_colors.get(parent_id, "#777777")
 
-            add_junction_node(nodes, added_nodes, attach_id, parent_center, attach_y)
+            add_junction_node(nodes, added_nodes, attach_id, parent_center, attach_y, "rgba(0,0,0,0)")
             add_junction_node(nodes, added_nodes, route_id, parent_center, route_y, color)
 
+            for n in nodes:
+                if n["id"] == route_id:
+                    n["data"]["familyType"] = "one"
+                    n["data"]["parentIds"] = [parent_id]
+                    break
 
+            # VISIBLE
             add_edge_once(edges, added_edges, {
                 "id": f"{attach_id}-{route_id}",
                 "source": attach_id,
@@ -1164,6 +1217,22 @@ class FamilyTreeEndpoint(Resource):
                         "strokeWidth": 2,
                     },
                 })
+
+            # HIDDEN
+            add_edge_once(edges, added_edges, {
+                "id": f"hidden-{parent_id}-{attach_id}",
+                "source": str(parent_id),
+                "target": attach_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": "rgba(0,0,0,0)",
+                    "strokeWidth": 0,
+                },
+                "selectable": False,
+                "focusable": False,
+            })
 
         return {"nodes": nodes, "edges": edges}, 200
 
