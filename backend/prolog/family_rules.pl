@@ -302,3 +302,17 @@ step_brother(StepBrother, Person) :-
 step_sister(StepSister, Person) :-
     step_sibling(StepSister, Person),
     female(StepSister).
+
+
+/* =========================================================
+   Convenience inverses / aliases (to match API predicate names)
+   ========================================================= */
+
+% child(Child, Parent) is the inverse of parent(Parent, Child).
+child(Child, Parent) :-
+    parent(Parent, Child).
+
+% NOTE: spouse/2 facts are asserted dynamically from the DB at runtime.
+% Do NOT define spouse/2 rules here, or SWI-Prolog will treat it as a static
+% predicate and PySwip will fail with permission_error(modify, static_procedure,...).
+% Use partner/2 (defined above) for symmetric spouse queries.

@@ -4,9 +4,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-db = SqliteDatabase("project.db")
+# Always store/read the SQLite DB next to this file (backend/project.db):
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "project.db")
+db = SqliteDatabase(DB_PATH)
 #db = MySQLDatabase("project", user=os.getenv("user"), password=os.getenv("pass"), host=os.getenv("host"), port=os.getenv("port"))
-
 
 
 class BaseModel(Model):
