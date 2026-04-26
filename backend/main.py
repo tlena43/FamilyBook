@@ -21,6 +21,8 @@ from pdf2image import convert_from_path
 from models import *
 from utilities import *
 from pyswip import Prolog
+from familyTree import *
+from collections import defaultdict
 
 # Prolog engine initialization (rest of the code is down below):
 prolog_engine = Prolog()
@@ -810,7 +812,7 @@ class QueryRelationshipEndpoint(Resource):
         relationship = (data["relationship"] or "").strip()
 
         # Allow-list predicates to avoid arbitrary Prolog execution.
-        allowed_relationships = {
+        allowed_relationships = [
             "parent",
             "spouse",
             "sibling",
@@ -829,18 +831,55 @@ class QueryRelationshipEndpoint(Resource):
             "uncle",
             "niece",
             "nephew",
-        }
+        ]
 
-        if relationship not in allowed_relationships:
+        # Support a more intuitive 'infer all' mode.
+        # Client can send relationship='all' to get a list of all true relationships.
+        if relationship != "all" and relationship not in set(allowed_relationships):
             abort(400, description="Unknown or unsupported relationship predicate.")
 
-        # Reload facts each time this endpoint is called (can improve by implementing catching!):
+        # Reload facts each time this endpoint is called (can improve by implementing caching):
         load_prolog_facts(prolog_engine)
 
-        # Build the Prolog query, run it, and handle any surfacing errors:
+        def _is_undefined_predicate_error(exc: Exception) -> bool:
+            msg = str(exc)
+            return "existence_error(procedure" in msg
+
         try:
+            if relationship == "all":
+                true_relationships = []
+                skipped_relationships = []
+
+                for rel in allowed_relationships:
+                    query = f"{rel}({person1_id}, {person2_id})"
+                    try:
+                        result = list(prolog_engine.query(query))
+                    except Exception as e:
+                        # If a predicate isn't defined in the currently loaded rules,
+                        # skip it so inference still works.
+                        if _is_undefined_predicate_error(e):
+                            skipped_relationships.append(rel)
+                            continue
+                        raise
+
+                    if result:
+                        true_relationships.append(rel)
+
+                return {
+                    "person1_id": person1_id,
+                    "person2_id": person2_id,
+                    "true_relationships": true_relationships,
+                    "skipped_relationships": skipped_relationships,
+                }, 200
+
+            # Backwards-compatible single relationship mode
             query = f"{relationship}({person1_id}, {person2_id})"
-            result = list(prolog_engine.query(query))
+            try:
+                result = list(prolog_engine.query(query))
+            except Exception as e:
+                if _is_undefined_predicate_error(e):
+                    abort(400, description="Relationship predicate is not defined in Prolog rules.")
+                raise
 
             if result:
                 return {"relationship": relationship, "exists": True}, 200
@@ -862,114 +901,271 @@ api.add_resource(QueryRelationshipEndpoint, "/query/relationship")
 class FamilyTreeEndpoint(Resource):
     @require_auth
     def get(self, person_id):
-        """Get family tree data in the form of React Flow nodes and edges."""
-        # Start with our "root" person:
         try:
             root_person = Person.get(Person.id == person_id)
         except Person.DoesNotExist:
             abort(404)
 
-        # Check the person's privacy level (based on utilities.py):
         if not g.user.hasPrivacyLevel(root_person.privacy):
             abort(403)
 
-        # Build tree structure:
+        people, parent_edges, spouse_edges = collect_family(root_person)
+
+        NODE_WIDTH = 160
+        V_SPACING = 180
+        SPOUSE_GAP = 40
+        NODE_HEIGHT = 60
+
+        FAMILY_COLORS = [
+            "#6C8AE4",
+            "#8B2908",
+            "#07572B",
+            "#6E165B",
+            "#628103",
+            "#0A8488",
+            "#805C08",
+        ]
+
+        generation = assign_generations(root_person.id, people, parent_edges, spouse_edges)
+        two_parent_families, single_parent_families = build_family_groups(people, parent_edges)
+        spouse_map = build_spouse_map(spouse_edges)
+
+        positions = layout_full_tree(
+            people,
+            generation,
+            two_parent_families,
+            single_parent_families,
+            node_width=NODE_WIDTH,
+            spouse_gap=SPOUSE_GAP,
+            level_gap=V_SPACING,
+            root_gap=40,
+            sibling_gap=40,
+        )
+
+        snap_spouse_only_people(
+            positions,
+            people,
+            two_parent_families,
+            single_parent_families,
+            node_width=NODE_WIDTH,
+            spouse_gap=SPOUSE_GAP,
+        )
+        
+        center_top_families_over_immediate_children(
+            positions,
+            generation,
+            two_parent_families,
+            single_parent_families,
+            node_width=NODE_WIDTH,
+            spouse_gap=SPOUSE_GAP,
+        )
+        
+        spread_top_family_blocks(
+            positions,
+            generation,
+            two_parent_families,
+            single_parent_families,
+            node_width=NODE_WIDTH,
+            spouse_gap=SPOUSE_GAP,
+            family_gap=80,
+        )
+
+        family_row_offsets = {}
+        families_by_generation = defaultdict(list)
+
+        family_colors = {}
+        gen_family_index = {}
+        single_family_colors = {}
+
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id not in generation:
+                continue
+
+            gen = generation[p1_id]
+            if gen not in gen_family_index:
+                gen_family_index[gen] = 0
+
+            color_idx = gen_family_index[gen] % len(FAMILY_COLORS)
+            gen_family_index[gen] += 1
+            family_colors[(p1_id, p2_id)] = FAMILY_COLORS[color_idx]
+
+        for parent_id, child_ids in single_parent_families.items():
+            if parent_id not in generation:
+                continue
+
+            gen = generation[parent_id]
+            if gen not in gen_family_index:
+                gen_family_index[gen] = 0
+
+            color_idx = gen_family_index[gen] % len(FAMILY_COLORS)
+            gen_family_index[gen] += 1
+            single_family_colors[parent_id] = FAMILY_COLORS[color_idx]
+
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id in generation:
+                gen = generation[p1_id]
+                families_by_generation[gen].append(("two", p1_id, p2_id))
+
+        for parent_id, child_ids in single_parent_families.items():
+            if parent_id in generation:
+                gen = generation[parent_id]
+                families_by_generation[gen].append(("one", parent_id))
+
+        for gen, fams in families_by_generation.items():
+            fams.sort()
+            for idx, fam in enumerate(fams):
+                family_row_offsets[fam] = idx % 3
+
         nodes = []
         edges = []
-        visited = set()
+        added_nodes = set()
+        added_edges = set()
 
-        # Function that builds the person's tree:
-        def build_tree(person, x=0, y=0, level=0):
-            """Recursively build tree nodes and edges."""
-            if person.id in visited:
-                return
-            visited.add(person.id)
+        for pid, person in people.items():
+            gender_name = (person.gender.name or "").lower()
 
-            # Create node for our root person:
-            node = {
-                "id": str(person.id),
+            nodes.append({
+                "id": str(pid),
+                "type": "person",
                 "data": {
                     "label": f"{person.firstName} {person.lastName}",
-                    "birthDay": str(person.birthDay) if person.birthDay else "Unknown",
-                    "gender": person.gender.name,
+                    "years": format_years(person),
                 },
-                "position": {"x": x, "y": y},
+                "position": positions[pid],
                 "style": {
-                    "background": "#FFB6C1" if person.gender.name == "female" else "#87CEEB",
+                    "background": "#FFB6C1" if gender_name == "female" else "#87CEEB",
                     "border": "2px solid #333",
                     "borderRadius": "8px",
                     "padding": "10px",
+                    "width": NODE_WIDTH,
                 }
-            }
+            })
+            added_nodes.add(str(pid))
 
-            # Append the node to the tree:
-            nodes.append(node)
+        for a, b in set(spouse_edges):
+            if a not in positions or b not in positions:
+                continue
 
-            # Add the person's parents as edges if visible:
-            # Parents go above the person, one on the left, the other on the right.
-            if person.parent1_id:
-                if g.user.hasPrivacyLevel(person.parent1_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.parent1_id.id}-{person.id}",
-                        "source": str(person.parent1_id.id),
-                        "target": str(person.id),
-                        "label": "parent",
-                    }
-                    edges.append(edge)
-                    build_tree(person.parent1_id, x - 150, y - 100, level + 1)
+            if positions[a]["x"] <= positions[b]["x"]:
+                source_id, target_id = a, b
+            else:
+                source_id, target_id = b, a
+
+            add_edge_once(edges, added_edges, {
+                "id": f"spouse-{source_id}-{target_id}",
+                "source": str(source_id),
+                "target": str(target_id),
+                "sourceHandle": "right",
+                "targetHandle": "left",
+                "type": "straight",
+                "style": {
+                    "stroke": "#FF69B4",
+                    "strokeWidth": 2,
+                },
+            })
+
+        for (p1_id, p2_id), child_ids in two_parent_families.items():
+            if p1_id not in positions or p2_id not in positions:
+                continue
+
+            visible_children = [cid for cid in child_ids if cid in positions]
+            if not visible_children:
+                continue
+
+            p1_center = positions[p1_id]["x"] + NODE_WIDTH / 2
+            p2_center = positions[p2_id]["x"] + NODE_WIDTH / 2
+            mid_x = (p1_center + p2_center) / 2
+
+            attach_y = positions[p1_id]["y"] + NODE_HEIGHT / 2
+            offset_band = family_row_offsets.get(("two", p1_id, p2_id), 0)
+            route_y = positions[p1_id]["y"] + NODE_HEIGHT + 25 + (offset_band * 24)
+
+            attach_id = f"attach-{p1_id}-{p2_id}"
+            route_id = f"route-{p1_id}-{p2_id}"
             
-            if person.parent2_id:
-                if g.user.hasPrivacyLevel(person.parent2_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.parent2_id.id}-{person.id}",
-                        "source": str(person.parent2_id.id),
-                        "target": str(person.id),
-                        "label": "parent",
-                    }
-                    edges.append(edge)
-                    build_tree(person.parent2_id, x + 150, y - 100, level + 1)
+            color = family_colors.get((p1_id, p2_id), "#777777")
 
-            # Add the person's spouse as an edge if visible:
-            # Spouses are to the right of the person.
-            if person.spouse_id:
-                if g.user.hasPrivacyLevel(person.spouse_id.privacy):
-                    edge = {
-                        "id": f"edge-{person.id}-{person.spouse_id.id}",
-                        "source": str(person.id),
-                        "target": str(person.spouse_id.id),
-                        "label": "spouse",
-                        "style": {"stroke": "#FF69B4", "strokeWidth": 2},
-                    }
-                    edges.append(edge)
-                    build_tree(person.spouse_id, x + 100, y, level)
 
-            # Add the person's children as edges if visible:
-            # Children are beneath the person and spread out if there are multiple.
-            children_list = Person.select().where(
-                (Person.parent1_id == person) | (Person.parent2_id == person)
-            )
-            for idx, child in enumerate(children_list):
-                if not g.user.hasPrivacyLevel(child.privacy):
-                    continue
-                
-                edge = {
-                    "id": f"edge-{person.id}-{child.id}",
-                    "source": str(person.id),
-                    "target": str(child.id),
-                    "label": "child",
-                }
-                edges.append(edge)
-                child_x = x + (idx - (len(children_list) - 1) / 2) * 200
-                build_tree(child, child_x, y + 150, level - 1)
+            add_junction_node(nodes, added_nodes, attach_id, mid_x, attach_y, "#FF69B4")
+            add_junction_node(nodes, added_nodes, route_id, mid_x, route_y, color)
 
-        # Build the tree:
-        build_tree(root_person)
 
-        # Return the tree:
-        return {
-            "nodes": nodes,
-            "edges": edges,
-        }, 200
+            add_edge_once(edges, added_edges, {
+                "id": f"{attach_id}-{route_id}",
+                "source": attach_id,
+                "target": route_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": color,
+                    "strokeWidth": 2,
+                },
+            })
+
+            for child_id in visible_children:
+                add_edge_once(edges, added_edges, {
+                    "id": f"{route_id}-{child_id}",
+                    "source": route_id,
+                    "target": str(child_id),
+                    "sourceHandle": "bottom",
+                    "targetHandle": "top",
+                    "type": "step",
+                    "style": {
+                        "stroke": color,
+                        "strokeWidth": 2,
+                    },
+                })
+
+        for parent_id, child_ids in single_parent_families.items():
+            if parent_id not in positions:
+                continue
+
+            visible_children = [cid for cid in child_ids if cid in positions]
+            if not visible_children:
+                continue
+
+            parent_center = positions[parent_id]["x"] + NODE_WIDTH / 2
+            attach_y = positions[parent_id]["y"] + NODE_HEIGHT / 2
+            offset_band = family_row_offsets.get(("one", parent_id), 0)
+            route_y = positions[parent_id]["y"] + NODE_HEIGHT + 25 + (offset_band * 24)
+
+            attach_id = f"single-attach-{parent_id}"
+            route_id = f"single-route-{parent_id}"
+            color = single_family_colors.get(parent_id, "#777777")
+
+            add_junction_node(nodes, added_nodes, attach_id, parent_center, attach_y)
+            add_junction_node(nodes, added_nodes, route_id, parent_center, route_y, color)
+
+
+            add_edge_once(edges, added_edges, {
+                "id": f"{attach_id}-{route_id}",
+                "source": attach_id,
+                "target": route_id,
+                "sourceHandle": "bottom",
+                "targetHandle": "top",
+                "type": "straight",
+                "style": {
+                    "stroke": color,
+                    "strokeWidth": 2,
+                },
+            })
+
+            for child_id in visible_children:
+                add_edge_once(edges, added_edges, {
+                    "id": f"{route_id}-{child_id}",
+                    "source": route_id,
+                    "target": str(child_id),
+                    "sourceHandle": "bottom",
+                    "targetHandle": "top",
+                    "type": "step",
+                    "style": {
+                        "stroke": color,
+                        "strokeWidth": 2,
+                    },
+                })
+
+        return {"nodes": nodes, "edges": edges}, 200
 
 # Add the FamilyTreeEndpoint API endpoint:
 api.add_resource(FamilyTreeEndpoint, "/tree/<int:person_id>")

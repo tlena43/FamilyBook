@@ -1,51 +1,9 @@
-// useState -> store data (nodes, edges, loading, error)
-// useEffect -> run code when the component loads or updates
-// ReactFlow -> main graph renderer
-// Background / Controls / MiniMap -> UI helpers
 import { useMemo, useState, useEffect } from 'react';
 import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import PersonNode from './PersonNode.js';
+import FamilyJunctionNode from './FamilyJunctionNode.js';
 
-// Test Data:
-// id -> unique ID for each node
-// data.label -> info displayed in each node
-// position -> where node appears
-// handles -> custom info for connection points
-const testNodes = [
-  {
-    id: "1",
-    data: { label: "Grandpa", handles: [false, true] },
-    position: { x: 200, y: 0 },
-  },
-  {
-    id: "2",
-    data: { label: "Grandma", handles: [false, true] },
-    position: { x: 400, y: 0 },
-  },
-  {
-    id: "3",
-    data: { label: "Dad", handles: [true, true] },
-    position: { x: 300, y: 150 },
-  },
-  {
-    id: "4",
-    data: { label: "Mom", handles: [false, true] },
-    position: { x: 500, y: 150 },
-  },
-  {
-    id: "5",
-    data: { label: "Me", handles: [true, false] },
-    position: { x: 400, y: 300 },
-  },
-];
-
-// Edge format: source (parent) -> target (child).
-const testEdges = [
-  { id: "e1-3", source: "1", target: "3" },
-  { id: "e2-3", source: "2", target: "3" },
-  { id: "e3-5", source: "3", target: "5" },
-  { id: "e4-5", source: "4", target: "5" },
-];
 
 // This function fetches tree data, stores it, and passes it to React Flow.
 function Flow({ personId }) {
@@ -91,6 +49,15 @@ function Flow({ personId }) {
       'niece',
       'nephew',
     ],
+    []
+  );
+
+  // Custom node renderers (restores proper handles/branch junction rendering)
+  const nodeTypes = useMemo(
+    () => ({
+      person: PersonNode,
+      familyJunction: FamilyJunctionNode,
+    }),
     []
   );
 
@@ -168,7 +135,7 @@ function Flow({ personId }) {
     }
   }
 
-  async function runRelationshipQuery() {
+  async function runRelationshipQuery(mode = 'single') {
     setRelError(null);
     setRelResult(null);
 
@@ -180,7 +147,9 @@ function Flow({ personId }) {
       return;
     }
 
-    if (!allowedRelationships.includes(relationship)) {
+    const relToQuery = mode === 'all' ? 'all' : relationship;
+
+    if (relToQuery !== 'all' && !allowedRelationships.includes(relToQuery)) {
       setRelError('Unsupported relationship.');
       return;
     }
@@ -202,7 +171,7 @@ function Flow({ personId }) {
         body: JSON.stringify({
           person1_id: p1,
           person2_id: p2,
-          relationship,
+          relationship: relToQuery,
         }),
       });
 
@@ -316,11 +285,20 @@ function Flow({ personId }) {
           </select>
 
           <button
-            onClick={runRelationshipQuery}
+            onClick={() => runRelationshipQuery('single')}
             disabled={relLoading}
             style={{ padding: '8px 12px' }}
           >
             {relLoading ? 'Querying…' : 'Query'}
+          </button>
+
+          <button
+            onClick={() => runRelationshipQuery('all')}
+            disabled={relLoading}
+            style={{ padding: '8px 12px' }}
+            title="Infer all true relationships"
+          >
+            Infer
           </button>
 
           <button
@@ -338,14 +316,37 @@ function Flow({ personId }) {
 
         {relResult ? (
           <div style={{ fontSize: 13, marginTop: 6 }}>
-            <div>
-              <strong>{relResult.relationship}</strong>: {relResult.exists ? 'true' : 'false'}
-            </div>
+            {Array.isArray(relResult.true_relationships) ? (
+              <div>
+                <div style={{ marginBottom: 6 }}>
+                  <strong>True relationships</strong> ({relResult.true_relationships.length})
+                </div>
+                {relResult.true_relationships.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {relResult.true_relationships.map((r) => (
+                      <li key={r}>{r}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div>None found.</div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <strong>{relResult.relationship}</strong>: {relResult.exists ? 'true' : 'false'}
+              </div>
+            )}
           </div>
         ) : null}
       </div>
 
-      <ReactFlow nodes={nodes} edges={edges} fitView onNodeClick={handleNodeClick}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        onNodeClick={handleNodeClick}
+      >
         <Background />
         <Controls />
         <MiniMap />
