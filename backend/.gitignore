@@ -4,3 +4,4 @@ upload/*
 .env
 venv/*
 project.db
+.venv
