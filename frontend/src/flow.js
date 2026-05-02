@@ -5,18 +5,112 @@ import PersonNode from './PersonNode.js';
 import FamilyJunctionNode from './FamilyJunctionNode.js';
 
 
-// This function fetches tree data, stores it, and passes it to React Flow.
+function buildHighlightOverlayEdges(baseEdges, pathEdgeIds) {
+  return (baseEdges ?? [])
+    .filter((e) => pathEdgeIds.has(e.id))
+    .filter((e) => {
+      const isHiddenConnector =
+        String(e.id).startsWith('hidden-') ||
+        e?.style?.stroke === 'rgba(0,0,0,0)' ||
+        e?.style?.strokeWidth === 0;
+      return !isHiddenConnector;
+    })
+    .map((e) => ({
+      ...e,
+      id: `highlight-${e.id}`,
+      animated: true,
+      selectable: false,
+      focusable: false,
+      style: {
+        ...(e.style || {}),
+        stroke: '#f59e0b',
+        strokeWidth: 5,
+        strokeDasharray: '6 4',
+        zIndex: 1000,
+      },
+    }));
+}
+
+function findPathBetweenNodes(nodes, edges, startId, endId) {
+  const start = String(startId);
+  const end = String(endId);
+
+  if (start === end) {
+    return {
+      nodeIds: new Set([start]),
+      edgeIds: new Set(),
+    };
+  }
+
+  const adjacency = new Map();
+
+  for (const node of nodes ?? []) {
+    adjacency.set(String(node.id), []);
+  }
+
+  for (const edge of edges ?? []) {
+    const source = String(edge.source);
+    const target = String(edge.target);
+
+    if (!adjacency.has(source)) adjacency.set(source, []);
+    if (!adjacency.has(target)) adjacency.set(target, []);
+
+    adjacency.get(source).push({ neighbor: target, edgeId: edge.id });
+    adjacency.get(target).push({ neighbor: source, edgeId: edge.id });
+  }
+
+  const queue = [start];
+  const visited = new Set([start]);
+  const parent = new Map(); // child -> { prevNode, edgeId }
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === end) break;
+
+    for (const { neighbor, edgeId } of adjacency.get(current) ?? []) {
+      if (visited.has(neighbor)) continue;
+
+      visited.add(neighbor);
+      parent.set(neighbor, { prevNode: current, edgeId });
+      queue.push(neighbor);
+    }
+  }
+
+  if (!visited.has(end)) {
+    return {
+      nodeIds: new Set(),
+      edgeIds: new Set(),
+    };
+  }
+
+  const nodeIds = new Set();
+  const edgeIds = new Set();
+
+  let current = end;
+  nodeIds.add(current);
+
+  while (current !== start) {
+    const step = parent.get(current);
+    if (!step) break;
+
+    edgeIds.add(step.edgeId);
+    current = step.prevNode;
+    nodeIds.add(current);
+  }
+
+  return { nodeIds, edgeIds };
+}
+
 function Flow({ personId }) {
-  // Nodes -> people
+  const [baseNodes, setBaseNodes] = useState([]);
+  const [baseEdges, setBaseEdges] = useState([]);
+
   const [nodes, setNodes] = useState([]);
-  // Edges -> relationships
   const [edges, setEdges] = useState([]);
-  // Loading -> whether or not fetch is in progress
+
   const [loading, setLoading] = useState(true);
-  // Error -> for failures
   const [error, setError] = useState(null);
 
-  // Relationship query UI state
   const [relPerson1, setRelPerson1] = useState('');
   const [relPerson2, setRelPerson2] = useState('');
   const [relationship, setRelationship] = useState('sibling');
@@ -24,7 +118,6 @@ function Flow({ personId }) {
   const [relLoading, setRelLoading] = useState(false);
   const [relError, setRelError] = useState(null);
 
-  // Node-click selection (more intuitive than typing IDs)
   const [selected1, setSelected1] = useState(null);
   const [selected2, setSelected2] = useState(null);
 
@@ -52,7 +145,6 @@ function Flow({ personId }) {
     []
   );
 
-  // Custom node renderers (restores proper handles/branch junction rendering)
   const nodeTypes = useMemo(
     () => ({
       person: PersonNode,
@@ -61,7 +153,6 @@ function Flow({ personId }) {
     []
   );
 
-  // keep the text inputs in sync with node picks
   useEffect(() => {
     setRelPerson1(selected1 != null ? String(selected1) : '');
   }, [selected1]);
@@ -70,37 +161,73 @@ function Flow({ personId }) {
     setRelPerson2(selected2 != null ? String(selected2) : '');
   }, [selected2]);
 
-  // Apply a visual highlight to selected nodes
   useEffect(() => {
-    const baseStyle = {
+    const basePersonStyle = {
       borderRadius: 8,
       border: '2px solid #333',
       padding: '10px',
     };
 
-    setNodes((prev) =>
-      (prev ?? []).map((n) => {
+    const { nodeIds: pathNodeIds, edgeIds: pathEdgeIds } =
+      selected1 != null && selected2 != null
+        ? findPathBetweenNodes(baseNodes, baseEdges, selected1, selected2)
+        : { nodeIds: new Set(), edgeIds: new Set() };
+
+
+    setNodes(
+      (baseNodes ?? []).map((n) => {
+        const idStr = String(n.id);
         const idNum = parseInt(n.id, 10);
-        const isSelected1 = Number.isInteger(idNum) && idNum === selected1;
-        const isSelected2 = Number.isInteger(idNum) && idNum === selected2;
 
-        const outline = isSelected1
-          ? { outline: '4px solid #2563eb', outlineOffset: 2 }
-          : isSelected2
-            ? { outline: '4px solid #16a34a', outlineOffset: 2 }
-            : { outline: 'none' };
+        if (n.type === 'person') {
+          const isSelected1 = Number.isInteger(idNum) && idNum === selected1;
+          const isSelected2 = Number.isInteger(idNum) && idNum === selected2;
+          const isOnPath = pathNodeIds.has(idStr);
 
-        return {
-          ...n,
-          style: {
-            ...baseStyle,
-            ...(n.style || {}),
-            ...outline,
-          },
-        };
+          const outline = isSelected1
+            ? { outline: '4px solid #2563eb', outlineOffset: 2 }
+            : isSelected2
+              ? { outline: '4px solid #16a34a', outlineOffset: 2 }
+              : isOnPath
+                ? { outline: '4px solid #f59e0b', outlineOffset: 2 }
+                : { outline: 'none' };
+
+          return {
+            ...n,
+            style: {
+              ...basePersonStyle,
+              ...(n.style || {}),
+              ...outline,
+            },
+          };
+        }
+
+        if (n.type === 'familyJunction') {
+          const isOnPath = pathNodeIds.has(idStr);
+
+          return {
+            ...n,
+            data: {
+              ...(n.data || {}),
+              isPathHighlighted: isOnPath,
+            },
+            style: {
+              ...(n.style || {}),
+            },
+          };
+        }
+
+        return n;
       })
     );
-  }, [selected1, selected2]);
+
+    const overlayEdges = buildHighlightOverlayEdges(baseEdges, pathEdgeIds);
+
+    setEdges([
+      ...(baseEdges ?? []),
+      ...overlayEdges,
+    ]);
+  }, [selected1, selected2, baseNodes, baseEdges]);
 
   function clearSelection() {
     setSelected1(null);
@@ -110,13 +237,11 @@ function Flow({ personId }) {
   }
 
   function handleNodeClick(_evt, node) {
+    if (node?.type !== 'person') return;
+
     const idNum = parseInt(node?.id, 10);
     if (!Number.isInteger(idNum)) return;
 
-    // Click behavior:
-    // - first click sets Person 1
-    // - second click sets Person 2
-    // - third click starts over with Person 1
     if (selected1 == null || (selected1 != null && selected2 != null)) {
       setSelected1(idNum);
       setSelected2(null);
@@ -126,7 +251,6 @@ function Flow({ personId }) {
     }
 
     if (selected2 == null) {
-      // allow clicking same node to deselect
       if (selected1 === idNum) {
         setSelected1(null);
       } else {
@@ -190,10 +314,12 @@ function Flow({ personId }) {
     }
   }
 
-  // Fetching data... (this runs whenever personId changes or whenever the component mounts)
   useEffect(() => {
     const fetchFamilyTree = async () => {
       try {
+        setLoading(true);
+        setError(null);
+
         const authKey = localStorage.getItem('key');
         const response = await fetch(`http://127.0.0.1:5000/tree/${personId}`, {
           headers: {
@@ -205,21 +331,33 @@ function Flow({ personId }) {
 
         const data = await response.json();
 
-        // Ensure node styles keep a baseline shape (selection highlight is layered later)
-        const baseStyle = {
+        const basePersonStyle = {
           borderRadius: 8,
           border: '2px solid #333',
           padding: '10px',
         };
 
-        setNodes((data.nodes ?? []).map((n) => ({
-          ...n,
-          style: {
-            ...baseStyle,
-            ...(n.style || {}),
-          },
-        })));
-        setEdges(data.edges ?? []);
+        const fetchedNodes = (data.nodes ?? []).map((n) => {
+          if (n.type !== 'person') return n;
+
+          return {
+            ...n,
+            style: {
+              ...basePersonStyle,
+              ...(n.style || {}),
+            },
+          };
+        });
+
+        const fetchedEdges = (data.edges ?? []).map((e, index) => ({
+          ...e,
+          id: e.id ?? `edge-${index}`,
+        }));
+
+        setBaseNodes(fetchedNodes);
+        setBaseEdges(fetchedEdges);
+        setNodes(fetchedNodes);
+        setEdges(fetchedEdges);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -230,13 +368,11 @@ function Flow({ personId }) {
     if (personId) fetchFamilyTree();
   }, [personId]);
 
-  // Conditional rendering of loading / error states.
   if (loading) return <div>Loading...</div>;
-  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>
+  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      {/* Relationship Query Panel */}
       <div
         style={{
           position: 'absolute',
@@ -355,11 +491,7 @@ function Flow({ personId }) {
   );
 }
 
-// Renders tree for person with ID from URL params or context.
-export default function FamilyTree(){
-  // Get personId from URL params, props, or context.
-  // For now, you can pass it as a prop or get it from useParams()
-  // Example: const { personId } = useParams(); if using React Router
+export default function FamilyTree() {
   const personId = new URLSearchParams(window.location.search).get('personId') || 1;
-  return <Flow personId={parseInt(personId)} />;
+  return <Flow personId={parseInt(personId, 10)} />;
 }
