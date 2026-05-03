@@ -928,6 +928,7 @@ def initialize_prolog():
         return
 
     rules_file = os.path.abspath(os.path.join(APP_DIR, "prolog", "family_rules.pl"))
+
     if not os.path.exists(rules_file):
         prolog_engine = None
         print(f"WARNING: Prolog rules file not found at {rules_file}")
@@ -935,10 +936,15 @@ def initialize_prolog():
 
     try:
         engine = Prolog()
-        engine.consult(rules_file)
+
+        rules_file = rules_file.replace("\\", "/")  # normalize path
+
+        list(engine.query(f"consult('{rules_file}')"))
         list(engine.query("true"))
+
         prolog_engine = engine
         print(f"DEBUG: Successfully loaded Prolog rules from {rules_file}")
+
     except Exception as e:
         prolog_engine = None
         print("WARNING: Prolog failed to initialize. Relationship endpoints disabled.")
@@ -1717,4 +1723,4 @@ api.add_resource(FamilyGroupTreesEndpoint, "/family-groups/<int:group_id>/trees"
 
 if __name__ == "__main__":
     initialize_prolog()
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=False)
