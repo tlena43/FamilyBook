@@ -1,5 +1,5 @@
 from collections import deque, defaultdict
-from models import Person
+from models import Person, FamilyGroupMember
 from flask import g
 
 
@@ -7,16 +7,15 @@ def can_view_person(person):
     if not person:
         return False
 
-    # Own account
     if person.user.id == g.user.id:
         return True
 
-    # Shared account access
-    from models import User_Access
+    if not person.tree_id:
+        return False
 
-    return User_Access.select().where(
-        (User_Access.owner == person.user) &
-        (User_Access.viewer == g.user)
+    return FamilyGroupMember.select().where(
+        (FamilyGroupMember.family_group == person.tree.family_group) &
+        (FamilyGroupMember.user == g.user)
     ).exists()
 
 

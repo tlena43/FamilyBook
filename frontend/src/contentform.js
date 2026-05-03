@@ -63,7 +63,7 @@ export async function deleteContent(loginKey, id) {
 
 // content form
 const ContentForm = () => {
-  const { loginKey } = useAuth(); // ✅ pull from context
+  const { loginKey } = useAuth(); 
   const fileRef = useRef(null);
   const navigate = useNavigate();
   const { id } = useParams();

@@ -1,4 +1,4 @@
-export const api = process.env.REACT_APP_API
+export const api = process.env.REACT_APP_API;
 
 export async function apiFetch(path, { loginKey, ...options } = {}) {
   const response = await fetch(api + path, {

@@ -22,6 +22,7 @@ const DisplayContent = lazy(() => import("./displaycontent"));
 const DisplayPeople = lazy(() => import("./displaypeople"));
 const IndividualPerson = lazy(() => import("./individualperson"));
 const IndividualContent = lazy(() => import("./individualcontent"));
+const GroupPage = lazy(() => import("./Groups.js"))
 //const FamilyTree = lazy(() => import("./familytree"))
 const FamilyTree = lazy(() => import("./flow"));
 
@@ -33,7 +34,8 @@ function NavItem({ menuOpen, closeMenu }) {
     { name: "Add Content", key: 3, route: "content/new" },
     { name: "View Content", key: 4, route: "content" },
     { name: "Family Tree", key: 5, route: "tree" },
-    { name: "Log out", key: 6, route: "logout" },
+    {name: "Groups", key:6, route: "groups"},
+    { name: "Log out", key: 7, route: "logout" },
   ];
 
   const navItems = items.map((item) => (
@@ -64,7 +66,7 @@ function Header() {
   return (
     <div id="head-wrapper">
       <div id="head">
-        <h1 id="header-title-container">Kischook Family</h1>
+        <h1 id="header-title-container">Family Book</h1>
         <FontAwesomeIcon icon={faBars} onClick={toggleMenu} />
         <NavItem menuOpen={menuOpen} closeMenu={closeMenu} />
       </div>
@@ -128,6 +130,7 @@ function PageState() {
             <Route path="/tree" element={<FamilyTree />} />
             <Route path="/" element={<DisplayContent />} />
             <Route path="/content/:id" element={<IndividualContent admin={true} />} />
+            <Route path="/groups" element={<GroupPage/>}/>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/logout" element={<LogOut />} />
             <Route path="*" element={<NotFound />} />

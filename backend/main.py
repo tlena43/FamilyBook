@@ -162,23 +162,11 @@ def user_can_edit_tree(user, tree):
 
 
 def user_can_view_person(user, person):
-    if person.user.id == user.id:
-        return True
-
-    if getattr(person, "tree_id", None) is None:
-        return False
-
-    return user_can_view_tree(user, person.tree)
+    return person.user_id == user.id
 
 
 def user_can_view_content(user, content):
-    if content.user.id == user.id:
-        return True
-
-    if getattr(content, "tree_id", None) is None:
-        return False
-
-    return user_can_view_tree(user, content.tree)
+    return content.user_id == user.id
 
 
 def get_accessible_person_or_404(person_id):
@@ -398,24 +386,28 @@ class RedeemShareCodeEndpoint(Resource):
         owner = User.get_or_none(User.share_code == code)
         if not owner:
             abort(404, description="Invalid share code.")
+
         if owner.id == g.user.id:
             abort(400, description="You cannot redeem your own share code.")
 
-        # Keep legacy owner/viewer access if User_Access exists.
-        if "User_Access" in globals():
-            User_Access.get_or_create(owner=owner, viewer=g.user)
+        # Add user to ALL of owner's family groups as viewer
+        groups = FamilyGroup.select().where(FamilyGroup.owner == owner)
 
-        # Also add user to owner's first family group as viewer if Gloria's models exist.
-        if "FamilyGroup" in globals() and "FamilyGroupMember" in globals():
-            group = FamilyGroup.select().where(FamilyGroup.owner == owner).order_by(FamilyGroup.id).first()
-            if group:
-                FamilyGroupMember.get_or_create(
-                    family_group=group,
-                    user=g.user,
-                    defaults={"role": "viewer"},
-                )
+        added_groups = []
 
-        return {"status": "access_granted", "owner": serialize_user_account(owner)}, 201
+        for group in groups:
+            _, created = FamilyGroupMember.get_or_create(
+                family_group=group,
+                user=g.user,
+                defaults={"role": "viewer"},
+            )
+            added_groups.append(group.id)
+
+        return {
+            "status": "access_granted",
+            "owner": serialize_user_account(owner),
+            "groupsJoined": added_groups,
+        }, 201
 
 
 api.add_resource(RedeemShareCodeEndpoint, "/share-code/redeem")
@@ -426,16 +418,19 @@ class SharedUsersEndpoint(Resource):
     def get(self):
         users = {}
 
-        if "User_Access" in globals():
-            for link in User_Access.select().where(User_Access.viewer == g.user):
-                users[link.owner.id] = serialize_user_account(link.owner)
+        memberships = (
+            FamilyGroupMember
+            .select(FamilyGroupMember, FamilyGroup, User)
+            .join(FamilyGroup)
+            .switch(FamilyGroupMember)
+            .join(User)
+            .where(FamilyGroupMember.user == g.user)
+        )
 
-        if "FamilyGroupMember" in globals() and "FamilyGroup" in globals():
-            memberships = FamilyGroupMember.select().where(FamilyGroupMember.user == g.user)
-            for m in memberships:
-                owner = m.family_group.owner
-                if owner.id != g.user.id:
-                    users[owner.id] = serialize_user_account(owner)
+        for m in memberships:
+            owner = m.family_group.owner
+            if owner.id != g.user.id:
+                users[owner.id] = serialize_user_account(owner)
 
         return {"users": list(users.values())}, 200
 
@@ -448,16 +443,19 @@ class MyViewersEndpoint(Resource):
     def get(self):
         viewers = {}
 
-        if "User_Access" in globals():
-            for link in User_Access.select().where(User_Access.owner == g.user):
-                viewers[link.viewer.id] = serialize_user_account(link.viewer)
+        groups = FamilyGroup.select().where(FamilyGroup.owner == g.user)
 
-        if "FamilyGroup" in globals() and "FamilyGroupMember" in globals():
-            groups = FamilyGroup.select().where(FamilyGroup.owner == g.user)
-            for group in groups:
-                for m in FamilyGroupMember.select().where(FamilyGroupMember.family_group == group):
-                    if m.user.id != g.user.id:
-                        viewers[m.user.id] = serialize_user_account(m.user)
+        for group in groups:
+            members = FamilyGroupMember.select().where(FamilyGroupMember.family_group == group)
+
+            for m in members:
+                if m.user.id != g.user.id:
+                    viewers[m.user.id] = {
+                        **serialize_user_account(m.user),
+                        "role": m.role,
+                        "groupId": group.id,
+                        "groupName": group.name,
+                    }
 
         return {"viewers": list(viewers.values())}, 200
 
@@ -468,21 +466,15 @@ api.add_resource(MyViewersEndpoint, "/my-viewers")
 class RevokeViewerEndpoint(Resource):
     @require_auth
     def delete(self, viewer_id):
+        groups = FamilyGroup.select().where(FamilyGroup.owner == g.user)
+
         deleted = 0
 
-        if "User_Access" in globals():
-            deleted += User_Access.delete().where(
-                (User_Access.owner == g.user) &
-                (User_Access.viewer == int(viewer_id))
+        for group in groups:
+            deleted += FamilyGroupMember.delete().where(
+                (FamilyGroupMember.family_group == group) &
+                (FamilyGroupMember.user == int(viewer_id))
             ).execute()
-
-        if "FamilyGroup" in globals() and "FamilyGroupMember" in globals():
-            groups = FamilyGroup.select().where(FamilyGroup.owner == g.user)
-            for group in groups:
-                deleted += FamilyGroupMember.delete().where(
-                    (FamilyGroupMember.family_group == group) &
-                    (FamilyGroupMember.user == int(viewer_id))
-                ).execute()
 
         if not deleted:
             abort(404)
@@ -637,11 +629,9 @@ class PersonEndpoint(Resource):
     @require_auth
     def get(self, id=None):
         if id is None:
-            tree_ids = get_accessible_tree_ids(g.user)
 
             query = Person.select().where(
-                (Person.user == g.user) |
-                (Person.tree.in_(tree_ids))
+                (Person.user == g.user) 
             )
 
             return {
@@ -817,8 +807,7 @@ class ContentEndpoint(Resource):
         if id is None:
             tree_ids = get_accessible_tree_ids(g.user)
             contents = Content.select().where(
-                (Content.user == g.user) |
-                (Content.tree.in_(tree_ids))
+                (Content.user == g.user) 
             )
             return {"content": [serialize_content_summary(c) for c in contents.iterator()]}, 200
 
@@ -1544,6 +1533,89 @@ class MyFamilyGroupsEndpoint(Resource):
 
 api.add_resource(MyFamilyGroupsEndpoint, "/family-groups")
 
+class GroupAccessSummaryEndpoint(Resource):
+    @require_auth
+    def get(self):
+        owned_groups = []
+
+        for group in FamilyGroup.select().where(FamilyGroup.owner == g.user):
+            members = (
+                FamilyGroupMember
+                .select(FamilyGroupMember, User)
+                .join(User)
+                .where(FamilyGroupMember.family_group == group)
+                .order_by(User.username)
+            )
+
+            owned_groups.append({
+                "id": group.id,
+                "name": group.name,
+                "shareCode": g.user.share_code,
+                "members": [
+                    {
+                        "userId": member.user.id,
+                        "username": member.user.username,
+                        "role": member.role,
+                        "isOwner": member.user.id == group.owner_id,
+                    }
+                    for member in members
+                ],
+            })
+
+        accessible_groups = []
+
+        memberships = (
+            FamilyGroupMember
+            .select(FamilyGroupMember, FamilyGroup, User)
+            .join(FamilyGroup)
+            .switch(FamilyGroupMember)
+            .join(User)
+            .where(FamilyGroupMember.user == g.user)
+            .order_by(FamilyGroup.name)
+        )
+
+        for membership in memberships:
+            group = membership.family_group
+
+            if group.owner_id == g.user.id:
+                continue
+
+            accessible_groups.append({
+                "id": group.id,
+                "name": group.name,
+                "ownerUserId": group.owner_id,
+                "ownerUsername": group.owner.username,
+                "myRole": membership.role,
+                "isOwnedByMe": False,
+            })
+        return {
+            "ownedGroups": owned_groups,
+            "accessibleGroups": accessible_groups,
+        }, 200
+
+api.add_resource(GroupAccessSummaryEndpoint, "/group-access-summary")
+
+class LeaveFamilyGroupEndpoint(Resource):
+    @require_auth
+    def delete(self, group_id):
+        membership = FamilyGroupMember.get_or_none(
+            (FamilyGroupMember.family_group_id == int(group_id)) &
+            (FamilyGroupMember.user_id == g.user.id)
+        )
+
+        if not membership:
+            abort(404)
+
+        group = membership.family_group
+
+        if group.owner_id == g.user.id:
+            abort(400, description="Owners cannot leave their own group.")
+
+        membership.delete_instance()
+        return {"status": "left_group"}, 200
+
+
+api.add_resource(LeaveFamilyGroupEndpoint, "/family-groups/<int:group_id>/leave")
 
 # =====================================================
 # Trees

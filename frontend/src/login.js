@@ -42,13 +42,11 @@ const LoginPage = () => {
     <div id="login-page">
       <div className="form-style">
         <h1>Welcome</h1>
-        <h2 className="section">Kischook Family History Database</h2>
+        <h2 className="section">Family Book: Family History Database</h2>
 
         <div className="inner-wrap">
           <p>
-            This is a private collection of Kischook family history documents focused on the children,
-            grandchildren, and extended family of Alexandria Kischook. All members of the Kischook family
-            are welcome to view and share documents.
+            This is an application designed to share and preserve your family history.
           </p>
         </div>
 

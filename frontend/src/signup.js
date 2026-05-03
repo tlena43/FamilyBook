@@ -88,11 +88,11 @@ const SignupPage = () => {
     <div id="signup-page">
       <div className="form-style">
         <h1>Create Account</h1>
-        <h2 className="section">Kischook Family History Database</h2>
+        <h2 className="section">Family Book: Family History Database</h2>
 
         <div className="inner-wrap">
           <p>
-            Join the Kischook family history database to view and share family documents.
+            Join the Family Book family history database to view and share family documents.
             Create an account with a username and password to get started.
           </p>
         </div>
