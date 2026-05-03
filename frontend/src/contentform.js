@@ -103,7 +103,7 @@ const ContentForm = () => {
     setValue: setContentType,
   } = useInput("");
 
-  const privacyOpts = ["Admin Only", "Close Family", "Extended Family"];
+  const privacyOpts = ["owner", "viewer"];
   const contentOpts = ["Newspaper", "Obituary", "Certificate", "Photo", "Legal Documents", "Other"];
 
   const [storedFile, setStoredFile] = useState("");

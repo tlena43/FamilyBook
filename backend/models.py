@@ -27,17 +27,14 @@ class Privacy(BaseModel):
 
 
 class User(BaseModel):
-    privacy = ForeignKeyField(Privacy, backref="users")
     username = CharField(unique=True)
     password = CharField()
+    share_code = CharField(unique=True, null=True)
 
-    def hasPrivacyLevel(self, privacy):
-        while privacy is not None:
-            if self.privacy == privacy:
-                return True
-            privacy = privacy.parent
-        return False
-
+class User_Access(BaseModel):
+    owner = ForeignKeyField(User, backref="owns")
+    viewer = ForeignKeyField(User, backref="can_view")
+    
 
 
 class Gender(BaseModel):
@@ -45,6 +42,7 @@ class Gender(BaseModel):
 
 
 class Person(BaseModel):
+    user = ForeignKeyField(User, backref="people")
     birthDay = DateField(null=True)
     privacy = ForeignKeyField(Privacy, backref="people")
     birthDateUnknowns = IntegerField()

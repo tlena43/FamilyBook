@@ -3,6 +3,23 @@ from flask import g
 from models import Person
 
 
+def can_view_person(person):
+    if not person:
+        return False
+
+    # Own account
+    if person.user.id == g.user.id:
+        return True
+
+    # Shared account access
+    from models import User_Access
+
+    return User_Access.select().where(
+        (User_Access.owner == person.user) &
+        (User_Access.viewer == g.user)
+    ).exists()
+
+
 def collect_family(root_person):
     people = {}
     parent_edges = []
@@ -10,32 +27,51 @@ def collect_family(root_person):
     visited = set()
     queue = deque([root_person])
 
+    root_owner = root_person.user
+
     while queue:
         person = queue.popleft()
+
         if person.id in visited:
             continue
+
+        if person.user.id != root_owner.id:
+            continue
+
+        if not can_view_person(person):
+            continue
+
         visited.add(person.id)
         people[person.id] = person
 
         for parent in [person.parent1_id, person.parent2_id]:
-            if parent and g.user.hasPrivacyLevel(parent.privacy):
+            if parent and parent.user.id == root_owner.id and can_view_person(parent):
                 parent_edges.append((parent.id, person.id))
                 if parent.id not in visited:
                     queue.append(parent)
 
-        if person.spouse_id and g.user.hasPrivacyLevel(person.spouse_id.privacy):
+        if (
+            person.spouse_id
+            and person.spouse_id.user.id == root_owner.id
+            and can_view_person(person.spouse_id)
+        ):
             a, b = sorted([person.id, person.spouse_id.id])
             spouse_edges.append((a, b))
+
             if person.spouse_id.id not in visited:
                 queue.append(person.spouse_id)
 
         children = Person.select().where(
-            (Person.parent1_id == person) | (Person.parent2_id == person)
+            (Person.user == root_owner) &
+            ((Person.parent1_id == person) | (Person.parent2_id == person))
         )
+
         for child in children:
-            if not g.user.hasPrivacyLevel(child.privacy):
+            if not can_view_person(child):
                 continue
+
             parent_edges.append((person.id, child.id))
+
             if child.id not in visited:
                 queue.append(child)
 

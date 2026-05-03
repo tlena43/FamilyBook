@@ -1,2 +1,3 @@
 venv/*
 project.db
+/node_modules

@@ -22,7 +22,7 @@ export class Person {
     this.spouse = p.spouse ?? "";
 
     this.birthday =
-      p.birthDay && p.birthDay !== "not_allowed"
+      p.birthDay
         ? unpackDate(new Date(p.birthDay), p.birthDateUnknowns)
         : "";
 

@@ -138,7 +138,7 @@ const PersonForm = () => {
   const [isUploading, setIsUploading] = useState("");
   const [originalFile, setOriginalFile] = useState("");
 
-  const privacyOpts = ["Admin Only", "Close Family", "Extended Family"];
+  const privacyOpts = ["owner", "viewer"];
 
   function resetForm() {
     resetFirstName();

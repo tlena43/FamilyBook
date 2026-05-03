@@ -52,18 +52,6 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 
 signer = TimestampSigner(SECRET_KEY)
 
-def get_admin_privacy():
-    return Privacy.get(Privacy.level == ADMIN_PRIVACY_LEVEL)
-
-
-def get_family_privacy():
-    return Privacy.get(Privacy.level == FAMILY_PRIVACY_LEVEL)
-
-
-def is_admin(user):
-    return getattr(user.privacy, "level", None) == ADMIN_PRIVACY_LEVEL
-
-
 def is_blank(value):
     return value in (None, "")
 
@@ -123,17 +111,15 @@ def build_upload_filename(original_filename):
     return f"{uuid.uuid4().hex}.{extension}"
 
 
-def serialize_person_summary(person, living_birthday_allowed):
+def serialize_person_summary(person):
     return {
         "id": person.id,
         "firstName": person.firstName,
         "middleName": person.middleName,
         "lastName": person.lastName,
-        "birthDay": (
+        "birthDay": 
             str(person.birthDay)
-            if person.isDead or living_birthday_allowed
-            else "not_allowed"
-        ),
+            ,
         "birthDateUnknowns": person.birthDateUnknowns,
         "fileName": person.file.filename if person.file else None,
     }
