@@ -1,17 +1,34 @@
 import React, { useEffect, useState } from "react";
 import "./index.css";
 import { fetchPerson } from "./formfunctions.js";
-import { useParams, Link } from "react-router-dom";
+import { deletePerson, deleteUploadIfNeeded } from "./personform.js";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Person } from "./person.js";
 import { useAuth } from "./authContext.js";
 
 const IndividualPerson = ({ admin }) => {
   const { loginKey } = useAuth();
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [valuePerson, setValuePerson] = useState(null);
   const [errorPerson, setErrorPerson] = useState(null);
   const [loadingPerson, setLoadingPerson] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this person? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await deletePerson(loginKey, id);
+      await deleteUploadIfNeeded(loginKey, valuePerson?.fileName);
+      navigate("/person");
+    } catch (e) {
+      console.error("Delete failed:", e);
+      alert("Delete failed. Check console for details.");
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!loginKey) return;
@@ -52,13 +69,15 @@ const IndividualPerson = ({ admin }) => {
           person={new Person(valuePerson)}
           content={valuePerson.content ?? []}
           admin={admin}
+          onDelete={handleDelete}
+          deleting={deleting}
         />
       ) : null}
     </div>
   );
 };
 
-function PersonDisplay({ person, content, admin }) {
+function PersonDisplay({ person, content, admin, onDelete, deleting }) {
   const deathDay = person.getDeathDay();
 
   const contentList = (content ?? []).map((item) => (
@@ -87,9 +106,18 @@ function PersonDisplay({ person, content, admin }) {
         {contentList}
 
         {admin ? (
-          <Link to={"/person/edit/" + person.getID()}>
-            <button>Edit</button>
-          </Link>
+          <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+            <Link to={"/person/edit/" + person.getID()}>
+              <button>Edit</button>
+            </Link>
+            <button
+              className="delete-btn"
+              onClick={onDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

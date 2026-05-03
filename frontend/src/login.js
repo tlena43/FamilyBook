@@ -26,7 +26,7 @@ const LoginPage = () => {
         body: content,
       });
 
-      login(data.key, data.privacyLevel);
+      login(data.key);
 
       resetUsername();
       resetPassword();

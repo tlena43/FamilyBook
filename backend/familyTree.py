@@ -1,5 +1,4 @@
 from collections import deque, defaultdict
-from flask import g
 from models import Person
 
 
@@ -18,12 +17,12 @@ def collect_family(root_person):
         people[person.id] = person
 
         for parent in [person.parent1_id, person.parent2_id]:
-            if parent and g.user.hasPrivacyLevel(parent.privacy):
+            if parent:
                 parent_edges.append((parent.id, person.id))
                 if parent.id not in visited:
                     queue.append(parent)
 
-        if person.spouse_id and g.user.hasPrivacyLevel(person.spouse_id.privacy):
+        if person.spouse_id:
             a, b = sorted([person.id, person.spouse_id.id])
             spouse_edges.append((a, b))
             if person.spouse_id.id not in visited:
@@ -33,8 +32,6 @@ def collect_family(root_person):
             (Person.parent1_id == person) | (Person.parent2_id == person)
         )
         for child in children:
-            if not g.user.hasPrivacyLevel(child.privacy):
-                continue
             parent_edges.append((person.id, child.id))
             if child.id not in visited:
                 queue.append(child)

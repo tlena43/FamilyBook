@@ -2,39 +2,44 @@ from models import *
 import bcrypt
 import os
 
-try:
-	os.remove("project.db")
-except OSError:
-	pass
-
-db.create_tables([Upload, Privacy, User, Gender, Person, ContentType], safe=True)
+# Create tables (safe=True makes this idempotent):
+db.create_tables(
+	[Upload, User, Gender, FamilyGroup, FamilyGroupMember, Tree, Person, ContentType],
+	safe=True,
+)
 db.create_tables([Content, Marriage, Person_Marriage, Person_Content], safe=True)
 
-Gender.create(name="male")
-Gender.create(name="female")
+# Seed genders (idempotent):
+Gender.get_or_create(name="male")
+Gender.get_or_create(name="female")
 
-admin = Privacy.create(level="admin")
-family = Privacy.create(level="family", parent=admin)
-extended = Privacy.create(level="extended", parent=family)
+# Seed admin user (idempotent):
+def ensure_user(username: str, raw_password: str) -> User:
+	user = User.get_or_none(User.username == username)
+	if user:
+		return user
+	salt = bcrypt.gensalt()
+	pw_hash = bcrypt.hashpw(raw_password.encode("utf8"), salt)
+	return User.create(username=username, password=pw_hash)
 
-adminPass = "k1$ch00k"
-adminSalt = bcrypt.gensalt()
-adminPassB = bcrypt.hashpw(adminPass.encode("utf8"), adminSalt)
-User.create(privacy=admin, username="Admin", password=adminPassB)
+admin_user = ensure_user("Admin", "k1$ch00k")
 
-familyPass = "familyPass"
-familySalt = bcrypt.gensalt()
-familyPassB = bcrypt.hashpw(familyPass.encode("utf8"), familySalt)
-User.create(privacy=family, username="Family", password=familyPassB)
+# Seed a default family group and default tree to demonstrate the model:
+default_group, _ = FamilyGroup.get_or_create(name="Default Family", owner=admin_user)
 
-extendedPass = "extendedPass"
-extendedSalt = bcrypt.gensalt()
-extendedPassB = bcrypt.hashpw(extendedPass.encode("utf8"), extendedSalt)
-User.create(privacy=extended, username="ExtendedFamily", password=extendedPassB)
+# Ensure group membership:
+FamilyGroupMember.get_or_create(family_group=default_group, user=admin_user, defaults={"role": "owner"})
 
-ContentType.create(name="Newspaper")
-ContentType.create(name="Obituary")
-ContentType.create(name="Certificate")
-ContentType.create(name="Photo")
-ContentType.create(name="Legal Documents")
-ContentType.create(name="Other")
+# Default tree owned by admin, visible to group members:
+default_tree, _ = Tree.get_or_create(name="Default Tree", owner=admin_user, family_group=default_group)
+
+# Seed content types (idempotent):
+for ct in [
+	"Newspaper",
+	"Obituary",
+	"Certificate",
+	"Photo",
+	"Legal Documents",
+	"Other",
+]:
+	ContentType.get_or_create(name=ct)

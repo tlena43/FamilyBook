@@ -45,7 +45,7 @@ export async function patchContent(loginKey, id, content) {
   });
 }
 
-async function deleteUpload(loginKey, file) {
+export async function deleteUpload(loginKey, file) {
   if (!file) return;
 
   await apiFetch("upload/" + file, {
@@ -54,7 +54,7 @@ async function deleteUpload(loginKey, file) {
   });
 }
 
-async function deleteContent(loginKey, id) {
+export async function deleteContent(loginKey, id) {
   await apiFetch("content/" + id, {
     loginKey,
     method: "DELETE",
@@ -93,9 +93,6 @@ const ContentForm = () => {
 
   const [selectedList, setSelectedList] = useState([]);
 
-  const { value: privacy, bind: bindPrivacy, reset: resetPrivacy, setValue: setPrivacy } =
-    useInput("");
-
   const {
     value: contentType,
     bind: bindContentType,
@@ -103,7 +100,6 @@ const ContentForm = () => {
     setValue: setContentType,
   } = useInput("");
 
-  const privacyOpts = ["Admin Only", "Close Family", "Extended Family"];
   const contentOpts = ["Newspaper", "Obituary", "Certificate", "Photo", "Legal Documents", "Other"];
 
   const [storedFile, setStoredFile] = useState("");
@@ -138,7 +134,6 @@ const ContentForm = () => {
         setYear(contentDate.year ?? "");
         setNumDays(contentDate.daysNum);
 
-        setPrivacy(privacyOpts[(contentEdit.privacy ?? 1) - 1] ?? "");
         setContentType(contentEdit.type ?? "");
 
         setStoredFile(contentEdit.fileName ?? "");
@@ -166,7 +161,6 @@ const ContentForm = () => {
     setMonth,
     setNotes,
     setNumDays,
-    setPrivacy,
     setYear,
   ]);
 
@@ -177,7 +171,6 @@ const ContentForm = () => {
     resetMonth();
     resetDay();
     resetYear();
-    resetPrivacy();
     resetContentType();
     setSelectedList([]);
   }
@@ -194,7 +187,6 @@ const ContentForm = () => {
       if ((fileTitle ?? "").length > 50) alertStr += "Title can not exceed 50 characters\n";
       if ((fileTitle ?? "").trim() === "") alertStr += "Title can not be blank\n";
       if (contentDateFull[0] === false) alertStr += "Your date is invalid. " + contentDateFull[1] + "\n";
-      if (privacyOpts.indexOf(privacy) === -1) alertStr += "A privacy level must be selected\n";
 
       const file = fileRef.current?.files?.[0];
       if (!editing && !file) alertStr += "A file must be uploaded\n";
@@ -208,7 +200,6 @@ const ContentForm = () => {
 
       const content = {
         user: 1,
-        privacy: privacyOpts.indexOf(privacy) + 1,
         type: contentOpts.indexOf(contentType) + 1,
         date: contentDateFull[1],
         notes: (notes ?? "").trim(),
@@ -268,7 +259,6 @@ const ContentForm = () => {
             )}
 
             <LabelInputField binding={bindFileTitle} label={"Add a Title"} id={"file-title"} />
-            <SelectField binding={bindPrivacy} id={"privacy-select"} label={"Privacy Level"} array={privacyOpts} />
           </div>
 
           <div className="section">

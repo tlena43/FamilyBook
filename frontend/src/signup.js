@@ -64,7 +64,7 @@ const SignupPage = () => {
       });
 
       // Auto-login after signup:
-      login(data.key, data.privacyLevel);
+      login(data.key);
 
       // Reset the form:
       resetUsername();
