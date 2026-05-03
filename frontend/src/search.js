@@ -42,7 +42,7 @@ function SearchList({ filteredContent, cardType }) {
     return (
       <div id={cardType + "-card-container"}>
         <div>
-          <h3>Hmm We can't seem to find anything here</h3>
+          <h3>No results found.</h3>
         </div>
       </div>
     );

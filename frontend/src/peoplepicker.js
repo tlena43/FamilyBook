@@ -53,7 +53,7 @@ return (
 
 const Scroll = (props) => <div className="search-scroll">{props.children}</div>;
 
-export default function PeopleSearch({ selectedList, setSelectedList, loginKey, maxSelect }) {
+export default function PeopleSearch({ selectedList, setSelectedList, loginKey, maxSelect, excludeIds }) {
     const [searchField, setSearchField] = useState("");
     const [people, setPeople] = useState([]);
     const [loadingPeople, setLoadingPeople] = useState(true);
@@ -88,9 +88,12 @@ export default function PeopleSearch({ selectedList, setSelectedList, loginKey, 
 
 
     const filtered = useMemo(() => {
+        const excludeSet = new Set((excludeIds ?? []).map(Number));
         const lowerSearchStr = searchField.toLowerCase();
 
         return (people ?? []).filter((person) => {
+            if (excludeSet.has(Number(person.id))) return false;
+
             const fn = (person.firstName ?? "").toLowerCase();
             const mn = (person.middleName ?? "").toLowerCase();
             const ln = (person.lastName ?? "").toLowerCase();
@@ -106,7 +109,7 @@ export default function PeopleSearch({ selectedList, setSelectedList, loginKey, 
                 mn.includes(lowerSearchStr)
             );
         });
-    }, [people, searchField]);
+    }, [people, searchField, excludeIds]);
 
     function removeBtnClick(index) {
         setNumSelected((n) => n + 1);

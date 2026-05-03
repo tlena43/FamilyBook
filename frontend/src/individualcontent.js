@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from "react";
 import "./index.css";
 import { unpackDate, fetchContent } from "./formfunctions.js";
-import { useParams, Link } from "react-router-dom";
+import { deleteUpload, deleteContent } from "./contentform.js";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, apiJson } from "./global.js";
 import { useAuth } from "./authContext.js";
 
 const IndividualContent = ({ admin }) => {
   const { loginKey } = useAuth();
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [valueContent, setValueContent] = useState(null);
   const [errorContent, setErrorContent] = useState(null);
   const [loadingContent, setLoadingContent] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this content? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await deleteContent(loginKey, id);
+      await deleteUpload(loginKey, valueContent?.fileName);
+      navigate("/content");
+    } catch (e) {
+      console.error("Delete failed:", e);
+      alert("Delete failed. Check console for details.");
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!loginKey) return;
@@ -47,12 +64,20 @@ const IndividualContent = ({ admin }) => {
     </div>
   ) : (
     <div>
-      {valueContent ? <ContentDisplay content={valueContent} id={id} admin={admin} /> : null}
+      {valueContent ? (
+        <ContentDisplay
+          content={valueContent}
+          id={id}
+          admin={admin}
+          onDelete={handleDelete}
+          deleting={deleting}
+        />
+      ) : null}
     </div>
   );
 };
 
-function ContentDisplay({ content, id, admin }) {
+function ContentDisplay({ content, id, admin, onDelete, deleting }) {
   const date = unpackDate(new Date(content.date), content.dateUnknowns);
 
   const people = (content.people ?? []).map((person) => (
@@ -95,9 +120,18 @@ function ContentDisplay({ content, id, admin }) {
         {content.location ? <p>Location: {content.location}</p> : null}
 
         {admin ? (
-          <Link to={"/content/edit/" + id}>
-            <button>Edit</button>
-          </Link>
+          <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+            <Link to={"/content/edit/" + id}>
+              <button>Edit</button>
+            </Link>
+            <button
+              className="delete-btn"
+              onClick={onDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

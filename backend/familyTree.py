@@ -1,6 +1,6 @@
 from collections import deque, defaultdict
-from flask import g
 from models import Person
+from flask import g
 
 
 def can_view_person(person):

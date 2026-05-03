@@ -7,19 +7,26 @@ try:
 except OSError:
 	pass
 
-db.create_tables([Upload, Privacy, User, User_Access, Gender, Person, ContentType], safe=True)
+# Create tables (safe=True makes this idempotent):
+db.create_tables(
+	[Upload, User, Gender, FamilyGroup, FamilyGroupMember, Tree, Person, ContentType],
+	safe=True,
+)
 db.create_tables([Content, Marriage, Person_Marriage, Person_Content], safe=True)
 
-Gender.create(name="male")
-Gender.create(name="female")
+# Seed genders (idempotent):
+Gender.get_or_create(name="male")
+Gender.get_or_create(name="female")
 
-owner = Privacy.create(level="owner")
-#editor = Privacy.create(level="editor", parent=owner)
-viewer = Privacy.create(level="viewer", parent=owner)
+# Seed admin user (idempotent):
 
-ContentType.create(name="Newspaper")
-ContentType.create(name="Obituary")
-ContentType.create(name="Certificate")
-ContentType.create(name="Photo")
-ContentType.create(name="Legal Documents")
-ContentType.create(name="Other")
+# Seed content types (idempotent):
+for ct in [
+	"Newspaper",
+	"Obituary",
+	"Certificate",
+	"Photo",
+	"Legal Documents",
+	"Other",
+]:
+	ContentType.get_or_create(name=ct)

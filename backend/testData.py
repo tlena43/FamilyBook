@@ -1,29 +1,75 @@
 from datetime import date
 import bcrypt
-# Adjust this import to match your project structure
-from models import Person, Privacy, Gender, User
+
+from models import (
+    Person,
+    Gender,
+    User,
+    FamilyGroup,
+    Tree,
+    FamilyGroupMember,
+    db,
+)
 
 
-def get_default_privacy():
-    privacy = Privacy.select().first()
-    if not privacy:
-        raise Exception("No Privacy record found. Create one before running this seed file.")
-    return privacy
+def get_gender(name="male"):
+    gender = Gender.get_or_none(Gender.name == name)
+    if gender:
+        return gender
 
-def get_gender():
     gender = Gender.select().first()
     if not gender:
         raise Exception("No Gender record found. Create one before running this seed file.")
+
     return gender
 
+
 def create_user():
-    adminPass = "k1$ch00k"
-    adminSalt = bcrypt.gensalt()
-    adminPassB = bcrypt.hashpw(adminPass.encode("utf8"), adminSalt)
-    return User.create(username="Admin", password=adminPassB, share_code = "1234")
+    admin_pass = "k1$ch00k"
+    password_hash = bcrypt.hashpw(
+        admin_pass.encode("utf8"),
+        bcrypt.gensalt()
+    ).decode("utf8")
+
+    user, created = User.get_or_create(
+        username="Admin",
+        defaults={
+            "password": password_hash,
+            "share_code": "1234",
+        }
+    )
+
+    if not created and not user.share_code:
+        user.share_code = "1234"
+        user.save()
+
+    return user
+
+
+def get_or_create_default_tree(user):
+    default_group, _ = FamilyGroup.get_or_create(
+        name="Default Family",
+        owner=user,
+    )
+
+    FamilyGroupMember.get_or_create(
+        family_group=default_group,
+        user=user,
+        defaults={"role": "owner"},
+    )
+
+    default_tree, _ = Tree.get_or_create(
+        name="Default Tree",
+        owner=user,
+        family_group=default_group,
+    )
+
+    return default_tree
+
 
 def create_person(
     user,
+    tree,
     people,
     key,
     first_name,
@@ -32,14 +78,14 @@ def create_person(
     death_date=None,
     birth_place=None,
     maiden_name=None,
+    gender_name="male",
 ):
-    privacy = get_default_privacy()
-    gender = get_gender()
+    gender = get_gender(gender_name)
 
     person = Person.create(
-        user = user,
+        user=user,
+        tree=tree,
         birthDay=birth_date,
-        privacy=privacy,
         birthDateUnknowns=0 if birth_date else 1,
         deathDay=death_date,
         deathDateUnknowns=0 if death_date else 1,
@@ -77,278 +123,317 @@ def set_parents(child, parent1=None, parent2=None):
 def seed_family_tree():
     people = {}
     user = create_user()
+    default_tree = get_or_create_default_tree(user)
 
-    # -------------------------
-    # Generation 1 (great-grandparents / oldest branch)
-    # -------------------------
-    create_person( user,
+    def add_person(*args, **kwargs):
+        return create_person(user, default_tree, *args, **kwargs)
+
+    # Generation 1
+    add_person(
         people, "arthur_sr", "Arthur", "Bennett",
-        birth_date=date(1932, 4, 11), birth_place="Boston"
+        birth_date=date(1932, 4, 11),
+        birth_place="Boston",
+        gender_name="male",
     )
-    create_person( user,
+    add_person(
         people, "evelyn_sr", "Evelyn", "Bennett",
-        birth_date=date(1934, 9, 2), birth_place="Boston", maiden_name="Carter"
+        birth_date=date(1934, 9, 2),
+        birth_place="Boston",
+        maiden_name="Carter",
+        gender_name="female",
     )
     set_spouses(people["arthur_sr"], people["evelyn_sr"])
 
-    create_person( user,
-        people, "frank_sr", "Frank", "Morrison", 
-        birth_date=date(1930, 1, 18), death_date=date(2001, 6, 9), birth_place="Chicago"
+    add_person(
+        people, "frank_sr", "Frank", "Morrison",
+        birth_date=date(1930, 1, 18),
+        death_date=date(2001, 6, 9),
+        birth_place="Chicago",
+        gender_name="male",
     )
-    create_person( user,
-        people, "helen_sr", "Helen", "Morrison", 
-        birth_date=date(1933, 12, 25), birth_place="Chicago", maiden_name="Reed"
+    add_person(
+        people, "helen_sr", "Helen", "Morrison",
+        birth_date=date(1933, 12, 25),
+        birth_place="Chicago",
+        maiden_name="Reed",
+        gender_name="female",
     )
     set_spouses(people["frank_sr"], people["helen_sr"])
 
-    create_person( user,
-        people, "walter_sr", "Walter", "Hayes", 
-        birth_date=date(1931, 7, 8), death_date=date(1998, 2, 1), birth_place="Denver"
+    add_person(
+        people, "walter_sr", "Walter", "Hayes",
+        birth_date=date(1931, 7, 8),
+        death_date=date(1998, 2, 1),
+        birth_place="Denver",
+        gender_name="male",
     )
-    create_person( user,
-        people, "dorothy_sr", "Dorothy", "Hayes", 
-        birth_date=date(1935, 5, 14), birth_place="Denver", maiden_name="Parker"
+    add_person(
+        people, "dorothy_sr", "Dorothy", "Hayes",
+        birth_date=date(1935, 5, 14),
+        birth_place="Denver",
+        maiden_name="Parker",
+        gender_name="female",
     )
     set_spouses(people["walter_sr"], people["dorothy_sr"])
 
-    # -------------------------
     # Generation 2
-    # -------------------------
-    create_person( user,
-        people, "robert", "Robert", "Bennett", 
-        birth_date=date(1958, 2, 20), birth_place="Boston"
+    add_person(
+        people, "robert", "Robert", "Bennett",
+        birth_date=date(1958, 2, 20),
+        birth_place="Boston",
+        gender_name="male",
     )
-    create_person( user,
-        people, "linda", "Linda", "Bennett", 
-        birth_date=date(1960, 6, 3), birth_place="Boston", maiden_name="Morrison"
+    add_person(
+        people, "linda", "Linda", "Bennett",
+        birth_date=date(1960, 6, 3),
+        birth_place="Boston",
+        maiden_name="Morrison",
+        gender_name="female",
     )
     set_spouses(people["robert"], people["linda"])
     set_parents(people["robert"], people["arthur_sr"], people["evelyn_sr"])
     set_parents(people["linda"], people["frank_sr"], people["helen_sr"])
 
-    create_person( user,
-        people, "michael", "Michael", "Bennett", 
-        birth_date=date(1962, 8, 12), birth_place="Boston"
+    add_person(
+        people, "michael", "Michael", "Bennett",
+        birth_date=date(1962, 8, 12),
+        birth_place="Boston",
+        gender_name="male",
     )
     set_parents(people["michael"], people["arthur_sr"], people["evelyn_sr"])
 
-    create_person( user,
-        people, "susan", "Susan", "Hayes", 
-        birth_date=date(1965, 10, 19), birth_place="Denver", maiden_name="Hayes"
+    add_person(
+        people, "susan", "Susan", "Hayes",
+        birth_date=date(1965, 10, 19),
+        birth_place="Denver",
+        maiden_name="Hayes",
+        gender_name="female",
     )
     set_spouses(people["michael"], people["susan"])
     set_parents(people["susan"], people["walter_sr"], people["dorothy_sr"])
 
-    create_person( user,
-        people, "patricia", "Patricia", "Morrison", 
-        birth_date=date(1964, 11, 30), birth_place="Chicago", maiden_name="Morrison"
+    add_person(
+        people, "patricia", "Patricia", "Morrison",
+        birth_date=date(1964, 11, 30),
+        birth_place="Chicago",
+        maiden_name="Morrison",
+        gender_name="female",
     )
     set_parents(people["patricia"], people["frank_sr"], people["helen_sr"])
 
-    create_person( user,
-        people, "george", "George", "Clark", 
-        birth_date=date(1961, 4, 7), birth_place="Milwaukee"
+    add_person(
+        people, "george", "George", "Clark",
+        birth_date=date(1961, 4, 7),
+        birth_place="Milwaukee",
+        gender_name="male",
     )
     set_spouses(people["george"], people["patricia"])
 
-    # -------------------------
     # Generation 3
-    # Robert + Linda children
-    # -------------------------
-    create_person( user,
-        people, "daniel", "Daniel", "Bennett", 
-        birth_date=date(1984, 1, 15), birth_place="Seattle"
+    add_person(
+        people, "daniel", "Daniel", "Bennett",
+        birth_date=date(1984, 1, 15),
+        birth_place="Seattle",
+        gender_name="male",
     )
-    create_person( user,
-        people, "emma", "Emma", "Bennett", 
-        birth_date=date(1987, 9, 4), birth_place="Seattle"
+    add_person(
+        people, "emma", "Emma", "Bennett",
+        birth_date=date(1987, 9, 4),
+        birth_place="Seattle",
+        gender_name="female",
     )
-    create_person( user,
-        people, "noah", "Noah", "Bennett", 
-        birth_date=date(1990, 7, 22), birth_place="Seattle"
+    add_person(
+        people, "noah", "Noah", "Bennett",
+        birth_date=date(1990, 7, 22),
+        birth_place="Seattle",
+        gender_name="male",
     )
     set_parents(people["daniel"], people["robert"], people["linda"])
     set_parents(people["emma"], people["robert"], people["linda"])
     set_parents(people["noah"], people["robert"], people["linda"])
 
-    # Michael + Susan children
-    create_person( user,
+    add_person(
         people, "olivia", "Olivia", "Bennett",
-        birth_date=date(1988, 3, 10), birth_place="Portland"
+        birth_date=date(1988, 3, 10),
+        birth_place="Portland",
+        gender_name="female",
     )
-    create_person( user,
+    add_person(
         people, "ethan", "Ethan", "Bennett",
-        birth_date=date(1992, 12, 1), birth_place="Portland"
+        birth_date=date(1992, 12, 1),
+        birth_place="Portland",
+        gender_name="male",
     )
     set_parents(people["olivia"], people["michael"], people["susan"])
     set_parents(people["ethan"], people["michael"], people["susan"])
 
-    # George + Patricia children
-    create_person( user,
+    add_person(
         people, "grace", "Grace", "Clark",
-        birth_date=date(1989, 5, 25), birth_place="Chicago"
+        birth_date=date(1989, 5, 25),
+        birth_place="Chicago",
+        gender_name="female",
     )
-    create_person( user,
-        people, "henry", "Henry", "Clark", 
-        birth_date=date(1993, 6, 18), birth_place="Chicago"
+    add_person(
+        people, "henry", "Henry", "Clark",
+        birth_date=date(1993, 6, 18),
+        birth_place="Chicago",
+        gender_name="male",
     )
     set_parents(people["grace"], people["george"], people["patricia"])
     set_parents(people["henry"], people["george"], people["patricia"])
 
-    # -------------------------
     # Spouses for Generation 3
-    # -------------------------
-    create_person( user,
-        people, "lauren", "Lauren", "Bennett", 
-        birth_date=date(1985, 8, 8), birth_place="Tacoma", maiden_name="Foster"
+    add_person(
+        people, "lauren", "Lauren", "Bennett",
+        birth_date=date(1985, 8, 8),
+        birth_place="Tacoma",
+        maiden_name="Foster",
+        gender_name="female",
     )
     set_spouses(people["daniel"], people["lauren"])
 
-    create_person( user,
-        people, "james", "James", "Turner", 
-        birth_date=date(1986, 2, 14), birth_place="Salem"
+    add_person(
+        people, "james", "James", "Turner",
+        birth_date=date(1986, 2, 14),
+        birth_place="Salem",
+        gender_name="male",
     )
     set_spouses(people["emma"], people["james"])
 
-    create_person( user,
-        people, "sophia", "Sophia", "Bennett", 
-        birth_date=date(1991, 11, 21), birth_place="Spokane", maiden_name="Reyes"
+    add_person(
+        people, "sophia", "Sophia", "Bennett",
+        birth_date=date(1991, 11, 21),
+        birth_place="Spokane",
+        maiden_name="Reyes",
+        gender_name="female",
     )
     set_spouses(people["noah"], people["sophia"])
 
-    create_person( user,
-        people, "liam", "Liam", "Cole", 
-        birth_date=date(1987, 4, 2), birth_place="Portland"
+    add_person(
+        people, "liam", "Liam", "Cole",
+        birth_date=date(1987, 4, 2),
+        birth_place="Portland",
+        gender_name="male",
     )
     set_spouses(people["olivia"], people["liam"])
 
-    create_person( user,
-        people, "ava", "Ava", "Bennett", 
-        birth_date=date(1994, 7, 13), birth_place="Eugene", maiden_name="Brooks"
+    add_person(
+        people, "ava", "Ava", "Bennett",
+        birth_date=date(1994, 7, 13),
+        birth_place="Eugene",
+        maiden_name="Brooks",
+        gender_name="female",
     )
     set_spouses(people["ethan"], people["ava"])
 
-    create_person( user,
-        people, "lucas", "Lucas", "Miller", 
-        birth_date=date(1988, 10, 9), birth_place="Chicago"
+    add_person(
+        people, "lucas", "Lucas", "Miller",
+        birth_date=date(1988, 10, 9),
+        birth_place="Chicago",
+        gender_name="male",
     )
     set_spouses(people["grace"], people["lucas"])
 
-    create_person( user,
-        people, "zoe", "Zoe", "Clark", 
-        birth_date=date(1994, 1, 27), birth_place="Chicago", maiden_name="Nguyen"
+    add_person(
+        people, "zoe", "Zoe", "Clark",
+        birth_date=date(1994, 1, 27),
+        birth_place="Chicago",
+        maiden_name="Nguyen",
+        gender_name="female",
     )
     set_spouses(people["henry"], people["zoe"])
 
-    # -------------------------
     # Generation 4
-    # -------------------------
-    create_person( user,
-        people, "charlotte", "Charlotte", "Bennett", 
-        birth_date=date(2010, 6, 1), birth_place="Seattle"
+    add_person(
+        people, "charlotte", "Charlotte", "Bennett",
+        birth_date=date(2010, 6, 1),
+        birth_place="Seattle",
+        gender_name="female",
     )
-    create_person( user,
-        people, "jack", "Jack", "Bennett", 
-        birth_date=date(2013, 2, 9), birth_place="Seattle"
+    add_person(
+        people, "jack", "Jack", "Bennett",
+        birth_date=date(2013, 2, 9),
+        birth_place="Seattle",
+        gender_name="male",
     )
     set_parents(people["charlotte"], people["daniel"], people["lauren"])
     set_parents(people["jack"], people["daniel"], people["lauren"])
 
-    create_person( user,
-        people, "ella", "Ella", "Turner", 
-        birth_date=date(2012, 9, 15), birth_place="Salem"
+    add_person(
+        people, "ella", "Ella", "Turner",
+        birth_date=date(2012, 9, 15),
+        birth_place="Salem",
+        gender_name="female",
     )
-    create_person( user,
-        people, "logan", "Logan", "Turner", 
-        birth_date=date(2015, 12, 30), birth_place="Salem"
+    add_person(
+        people, "logan", "Logan", "Turner",
+        birth_date=date(2015, 12, 30),
+        birth_place="Salem",
+        gender_name="male",
     )
     set_parents(people["ella"], people["james"], people["emma"])
     set_parents(people["logan"], people["james"], people["emma"])
 
-    create_person( user,
-        people, "mason", "Mason", "Bennett", 
-        birth_date=date(2016, 4, 5), birth_place="Spokane"
+    add_person(
+        people, "mason", "Mason", "Bennett",
+        birth_date=date(2016, 4, 5),
+        birth_place="Spokane",
+        gender_name="male",
     )
     set_parents(people["mason"], people["noah"], people["sophia"])
 
-    create_person( user,
+    add_person(
         people, "amelia", "Amelia", "Cole",
-        birth_date=date(2011, 7, 7), birth_place="Portland"
+        birth_date=date(2011, 7, 7),
+        birth_place="Portland",
+        gender_name="female",
     )
-    create_person( user,
-        people, "harper", "Harper", "Cole", 
-        birth_date=date(2014, 8, 19), birth_place="Portland"
+    add_person(
+        people, "harper", "Harper", "Cole",
+        birth_date=date(2014, 8, 19),
+        birth_place="Portland",
+        gender_name="female",
     )
     set_parents(people["amelia"], people["liam"], people["olivia"])
     set_parents(people["harper"], people["liam"], people["olivia"])
 
-    create_person( user,
-        people, "benjamin", "Benjamin", "Bennett", 
-        birth_date=date(2018, 3, 11), birth_place="Eugene"
+    add_person(
+        people, "benjamin", "Benjamin", "Bennett",
+        birth_date=date(2018, 3, 11),
+        birth_place="Eugene",
+        gender_name="male",
     )
     set_parents(people["benjamin"], people["ethan"], people["ava"])
 
-    create_person( user,
-        people, "nora", "Nora", "Miller", 
-        birth_date=date(2017, 5, 24), birth_place="Chicago"
+    add_person(
+        people, "nora", "Nora", "Miller",
+        birth_date=date(2017, 5, 24),
+        birth_place="Chicago",
+        gender_name="female",
     )
     set_parents(people["nora"], people["lucas"], people["grace"])
 
-    create_person( user,
+    add_person(
         people, "leo", "Leo", "Clark",
-        birth_date=date(2020, 11, 4), birth_place="Chicago"
+        birth_date=date(2020, 11, 4),
+        birth_place="Chicago",
+        gender_name="male",
     )
     set_parents(people["leo"], people["henry"], people["zoe"])
 
-    # -------------------------
-    # Add a second marriage + half-sibling branch
-    # -------------------------
-    # Daniel's first spouse Lauren dies; Daniel remarries.
-    #people["lauren"].deathDay = date(2018, 1, 12)
-    #people["lauren"].deathDateUnknowns = 0
-    #people["lauren"].isDead = True
-    #people["lauren"].save()
-
-    #people["daniel"].spouse_id = None
-    #people["daniel"].save()
-    #people["lauren"].spouse_id = None
-    #people["lauren"].save()
-
-    #create_person(
-    #    people, "rachel", "Rachel", "Bennett", 
-    #    birth_date=date(1989, 9, 29), birth_place="Boise", maiden_name="Adams"
-    #)
-    #set_spouses(people["daniel"], people["rachel"])
-
-    #create_person(
-    #    people, "ivy", "Ivy", "Bennett", 
-    #    birth_date=date(2021, 6, 17), birth_place="Boise"
-    #)
-    #set_parents(people["ivy"], people["daniel"], people["rachel"])
-
-    # -------------------------
-    # Add another divorce/remarriage branch
-    # -------------------------
-    # Patricia and George separate; Henry remains their child.
-    #people["george"].spouse_id = None
-    #people["george"].save()
-    #people["patricia"].spouse_id = None
-    #people["patricia"].save()
-
-    #create_person(
-    #    people, "steven", "Steven", "Hall", 
-    #    birth_date=date(1960, 3, 2), birth_place="Detroit"
-    #)
-    #set_spouses(people["patricia"], people["steven"])
-
-    #create_person(
-    #    people, "hannah", "Hannah", "Hall", 
-    #    birth_date=date(1998, 2, 8), birth_place="Chicago"
-    #)
-    #set_parents(people["hannah"], people["steven"], people["patricia"])
-
     print(f"Seeded {len(people)} people successfully.")
+    print(f"User: {user.username}")
+    print("Password: k1$ch00k")
+    print(f"Share code: {user.share_code}")
+    print(f"Family group: {default_tree.family_group.name}")
+    print(f"Tree: {default_tree.name}")
 
 
 if __name__ == "__main__":
+    if db.is_closed():
+        db.connect()
+
     seed_family_tree()
+
+    if not db.is_closed():
+        db.close()
