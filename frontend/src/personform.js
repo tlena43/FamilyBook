@@ -141,13 +141,19 @@ const PersonForm = () => {
 
   useEffect(() => {
     if (!loginKey) return;
-    apiJson("trees", { loginKey, method: "GET" })
+
+    apiJson("trees/first", { loginKey, method: "GET" })
       .then((data) => {
-        const list = data?.trees ?? [];
-        setTrees(list);
-        if (!editing && list.length > 0) setSelectedTree(String(list[0].id));
+        console.log("first tree response:", data);
+
+        if (data?.tree) {
+          setTrees([data.tree]);
+          setSelectedTree(String(data.tree.id));
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load first tree:", err);
+      });
   }, [loginKey, editing]);
 
   function resetForm() {
@@ -208,7 +214,7 @@ const PersonForm = () => {
           .map(p => new Person(p));
         setSelectedListParent(mapParents);
         setSelectedListSpouse(mapSpouse);
-        
+
         const mapChildren = (personEdit.children ?? []).map(p => new Person(p));
         setSelectedListChild(mapChildren);
 

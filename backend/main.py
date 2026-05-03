@@ -259,6 +259,15 @@ def get_default_tree_for_user(user):
     return tree
 
 
+def get_first_owned_tree(user):
+    return (
+        Tree
+        .select()
+        .where(Tree.owner == user)
+        .order_by(Tree.id)
+        .first()
+    )
+
 # =====================================================
 # Request lifecycle
 # =====================================================
@@ -335,7 +344,7 @@ class SignupEndpoint(Resource):
                 share_code=generate_share_code(),
             )
 
-            # Create Gloria's family-group/tree structure for new accounts if models exist.
+            # Create family-group/tree structure for new accounts if models exist.
             if "FamilyGroup" in globals() and "FamilyGroupMember" in globals() and "Tree" in globals():
                 group = FamilyGroup.create(name=f"{username}'s Family", owner=new_user)
                 FamilyGroupMember.create(family_group=group, user=new_user, role="owner")
@@ -1641,6 +1650,26 @@ class MyTreesEndpoint(Resource):
             })
 
         return {"trees": trees}, 200
+    
+class FirstOwnedTreeEndpoint(Resource):
+    @require_auth
+    def get(self):
+        tree = get_first_owned_tree(g.user)
+
+        if not tree:
+            return {"tree": None}, 200
+
+        return {
+            "tree": {
+                "id": tree.id,
+                "name": tree.name,
+                "ownerUserId": tree.owner_id,
+                "familyGroupId": tree.family_group_id,
+                "familyGroupName": tree.family_group.name if tree.family_group_id else None,
+            }
+        }, 200
+
+api.add_resource(FirstOwnedTreeEndpoint, "/trees/first")
 
 
 class FamilyGroupTreesEndpoint(Resource):
