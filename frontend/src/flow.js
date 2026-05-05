@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -138,6 +138,34 @@ function Flow({ personId }) {
   const [selected2, setSelected2] = useState(null);
   const [selected1Name, setSelected1Name] = useState(null);
   const [selected2Name, setSelected2Name] = useState(null);
+
+  const [panelMinimized, setPanelMinimized] = useState(false);
+  const [panelPos, setPanelPos] = useState({ x: 12, y: 12 });
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, origX: 0, origY: 0 });
+  const bannerRef = useRef(null);
+
+  const handlePanelDragStart = useCallback((e) => {
+    dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, origX: panelPos.x, origY: panelPos.y };
+    e.preventDefault();
+  }, [panelPos]);
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!dragRef.current.dragging) return;
+      const minY = bannerRef.current ? bannerRef.current.getBoundingClientRect().bottom + 4 : 0;
+      setPanelPos({
+        x: dragRef.current.origX + (e.clientX - dragRef.current.startX),
+        y: Math.max(minY, dragRef.current.origY + (e.clientY - dragRef.current.startY)),
+      });
+    };
+    const onMouseUp = () => { dragRef.current.dragging = false; };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   const allowedRelationships = useMemo(
     () => [
@@ -535,6 +563,7 @@ function Flow({ personId }) {
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       {bannerMessage ? (
         <div
+          ref={bannerRef}
           style={{
             position: 'absolute',
             top: 12,
@@ -578,8 +607,8 @@ function Flow({ personId }) {
       <div
         style={{
           position: 'absolute',
-          top: 12,
-          left: 12,
+          top: panelPos.y,
+          left: panelPos.x,
           zIndex: 10,
           background: 'rgba(255,255,255,0.95)',
           border: '1px solid #ddd',
@@ -589,8 +618,22 @@ function Flow({ personId }) {
           boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>Tree Viewer</div>
+        <div
+          onMouseDown={handlePanelDragStart}
+          style={{ fontWeight: 700, marginBottom: panelMinimized ? 0 : 10, cursor: 'grab', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
+        >
+          <span>Tree Viewer</span>
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setPanelMinimized((m) => !m)}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, padding: '0 4px', color: '#555', lineHeight: 1 }}
+            title={panelMinimized ? 'Expand' : 'Minimize'}
+          >
+            {panelMinimized ? '▲' : '▼'}
+          </button>
+        </div>
 
+        {!panelMinimized && (<>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <select
             value={selectedTreeId}
@@ -803,6 +846,7 @@ function Flow({ personId }) {
             )}
           </>
         )}
+        </>)}
       </div>
 
       <ReactFlow
