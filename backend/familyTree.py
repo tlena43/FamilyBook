@@ -512,7 +512,6 @@ def layout_full_tree(
 
     return positions
 
-
 ##ensures spouses without kids are placed together
 def snap_spouse_only_people(
     positions,
@@ -531,22 +530,10 @@ def snap_spouse_only_people(
     for parent_id in single_parent_families.keys():
         parent_ids.add(parent_id)
 
-    def overlaps_any(test_id, x, y):
-        for other_id, pos in positions.items():
-            if other_id == test_id:
-                continue
-
-            same_row = abs(pos["y"] - y) < 5
-            overlaps_x = x < pos["x"] + node_width and x + node_width > pos["x"]
-
-            if same_row and overlaps_x:
-                return True
-
-        return False
-
-    moved = set()
+    row_gap = 40
     handled_pairs = set()
 
+    # first snap spouse pairs together
     for pid, person in people.items():
         if not person.spouse_id:
             continue
@@ -574,41 +561,109 @@ def snap_spouse_only_people(
         if pid in parent_ids and sid not in parent_ids:
             anchor_id = pid
             move_id = sid
+            place_move_right = True
         elif sid in parent_ids and pid not in parent_ids:
             anchor_id = sid
             move_id = pid
+            place_move_right = False
         else:
-            # If neither spouse has children, keep the person farther right fixed
-            # This prevents long spouse lines across the whole tree
-            if positions[pid]["x"] >= positions[sid]["x"]:
+            # If neither spouse has children, keep their left-to-right order
+            if positions[pid]["x"] <= positions[sid]["x"]:
                 anchor_id = pid
                 move_id = sid
+                place_move_right = True
             else:
                 anchor_id = sid
                 move_id = pid
-
-        if move_id in moved:
-            continue
+                place_move_right = True
 
         anchor_x = positions[anchor_id]["x"]
         anchor_y = positions[anchor_id]["y"]
 
-        right_x = anchor_x + node_width + spouse_gap
-        left_x = anchor_x - node_width - spouse_gap
+        positions[move_id]["y"] = anchor_y
 
-        # Try right side first, then left side if right side overlaps
-        if not overlaps_any(move_id, right_x, anchor_y):
-            positions[move_id]["x"] = right_x
-            positions[move_id]["y"] = anchor_y
-        elif not overlaps_any(move_id, left_x, anchor_y):
-            positions[move_id]["x"] = left_x
-            positions[move_id]["y"] = anchor_y
+        if place_move_right:
+            positions[move_id]["x"] = anchor_x + node_width + spouse_gap
         else:
-            # Last resort: keep it close but move it down slightly to avoid covering another node
-            positions[move_id]["x"] = right_x
-            positions[move_id]["y"] = anchor_y + 40
+            positions[move_id]["x"] = anchor_x - node_width - spouse_gap
 
-        moved.add(move_id)
+    # then repack each row so spouse blocks do not overlap nearby nodes
+    rows = defaultdict(list)
+
+    for pid, pos in positions.items():
+        row_key = round(pos["y"])
+        rows[row_key].append(pid)
+
+    for row_key, ids in rows.items():
+        used = set()
+        blocks = []
+
+        for pid in ids:
+            if pid in used:
+                continue
+
+            person = people.get(pid)
+
+            if person and person.spouse_id and person.spouse_id.id in positions:
+                sid = person.spouse_id.id
+
+                if sid in ids and sid not in used:
+                    left_id, right_id = sorted(
+                        [pid, sid],
+                        key=lambda item_id: positions[item_id]["x"]
+                    )
+
+                    left = min(positions[left_id]["x"], positions[right_id]["x"])
+                    right = max(positions[left_id]["x"], positions[right_id]["x"]) + node_width
+
+                    blocks.append(
+                        {
+                            "ids": (left_id, right_id),
+                            "left": left,
+                            "width": right - left,
+                            "kind": "pair",
+                        }
+                    )
+
+                    used.add(left_id)
+                    used.add(right_id)
+                    continue
+
+            blocks.append(
+                {
+                    "ids": (pid,),
+                    "left": positions[pid]["x"],
+                    "width": node_width,
+                    "kind": "single",
+                }
+            )
+
+            used.add(pid)
+
+        blocks.sort(key=lambda block: block["left"])
+
+        old_center = sum(block["left"] + block["width"] / 2 for block in blocks) / len(blocks)
+
+        cursor = blocks[0]["left"]
+
+        for block in blocks:
+            block["left"] = max(block["left"], cursor)
+            cursor = block["left"] + block["width"] + row_gap
+
+        new_center = sum(block["left"] + block["width"] / 2 for block in blocks) / len(blocks)
+        shift = old_center - new_center
+
+        for block in blocks:
+            block["left"] += shift
+
+            if block["kind"] == "pair":
+                left_id, right_id = block["ids"]
+                positions[left_id]["x"] = block["left"]
+                positions[right_id]["x"] = block["left"] + node_width + spouse_gap
+                positions[right_id]["y"] = positions[left_id]["y"]
+            else:
+                (pid,) = block["ids"]
+                positions[pid]["x"] = block["left"]
 
 ##ensure root families are centred over their children
 def center_top_families_over_immediate_children(
