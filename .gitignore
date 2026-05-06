@@ -1,2 +1,5 @@
 venv/*
 project.db
+/node_modules
+.venv/*
+.venv

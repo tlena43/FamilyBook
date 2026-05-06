@@ -22,30 +22,21 @@ const DisplayContent = lazy(() => import("./displaycontent"));
 const DisplayPeople = lazy(() => import("./displaypeople"));
 const IndividualPerson = lazy(() => import("./individualperson"));
 const IndividualContent = lazy(() => import("./individualcontent"));
+const GroupPage = lazy(() => import("./Groups.js"))
 //const FamilyTree = lazy(() => import("./familytree"))
 const FamilyTree = lazy(() => import("./flow"));
 
 // start navigation functions
-function NavItem({ privacyLevel, menuOpen, closeMenu }) {
-  let items;
-
-  if (privacyLevel !== "extended") {
-    items = [
-      { name: "Add Person", key: 1, route: "person/new" },
-      { name: "People", key: 2, route: "person" },
-      { name: "Add Content", key: 3, route: "content/new" },
-      { name: "View Content", key: 4, route: "content" },
-      { name: "Family Tree", key: 5, route: "tree" },
-      { name: "Log out", key: 6, route: "logout" },
-    ];
-  } else {
-    items = [
-      { name: "People", key: 2, route: "person" },
-      { name: "View Content", key: 4, route: "content" },
-      { name: "Family Tree", key: 5, route: "tree" },
-      { name: "Log out", key: 5, route: "logout" },
-    ];
-  }
+function NavItem({ menuOpen, closeMenu }) {
+  const items = [
+    { name: "Add Person", key: 1, route: "person/new" },
+    { name: "People", key: 2, route: "person" },
+    { name: "Add Content", key: 3, route: "content/new" },
+    { name: "View Content", key: 4, route: "content" },
+    { name: "Family Tree", key: 5, route: "tree" },
+    {name: "Groups", key:6, route: "groups"},
+    { name: "Log out", key: 7, route: "logout" },
+  ];
 
   const navItems = items.map((item) => (
     <Link to={"/" + item.route} className="nav-item" key={item.key} onClick={closeMenu}>
@@ -62,7 +53,6 @@ function NavItem({ privacyLevel, menuOpen, closeMenu }) {
 }
 
 function Header() {
-  const { privacyLevel } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   function toggleMenu() {
@@ -76,9 +66,9 @@ function Header() {
   return (
     <div id="head-wrapper">
       <div id="head">
-        <h1 id="header-title-container">Kischook Family</h1>
+        <h1 id="header-title-container">Family Book</h1>
         <FontAwesomeIcon icon={faBars} onClick={toggleMenu} />
-        <NavItem privacyLevel={privacyLevel} menuOpen={menuOpen} closeMenu={closeMenu} />
+        <NavItem menuOpen={menuOpen} closeMenu={closeMenu} />
       </div>
     </div>
   );
@@ -110,7 +100,7 @@ function LogOut() {
 }
 
 function PageState() {
-  const { loginKey, privacyLevel } = useAuth();
+  const { loginKey } = useAuth();
 
   if (loginKey == null) {
     return (
@@ -124,32 +114,6 @@ function PageState() {
     );
   }
 
-  // logged in
-  if (privacyLevel === "extended") {
-    return (
-      <div>
-        <Header />
-        <div id="page-body">
-          <Suspense fallback={<div>Loading...</div>}>
-            <Routes>
-              <Route path="/person" element={<DisplayPeople admin={false} />} />
-              <Route path="/person/:id" element={<IndividualPerson admin={false} />} />
-              <Route path="/content" element={<DisplayContent />} />
-              <Route path="/tree" element={<FamilyTree />} />
-              <Route path="/" element={<DisplayContent />} />
-              <Route path="/content/:id" element={<IndividualContent admin={false} />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/logout" element={<LogOut />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </div>
-      </div>
-    );
-  }
-
-  // admin / non-extended
   return (
     <div>
       <Header />
@@ -166,6 +130,7 @@ function PageState() {
             <Route path="/tree" element={<FamilyTree />} />
             <Route path="/" element={<DisplayContent />} />
             <Route path="/content/:id" element={<IndividualContent admin={true} />} />
+            <Route path="/groups" element={<GroupPage/>}/>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/logout" element={<LogOut />} />
             <Route path="*" element={<NotFound />} />

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import "./index.css";
 import {
   useInput,
-  SelectField,
   separateDate,
   fetchPerson,
   LabelInputField,
@@ -131,14 +130,31 @@ const PersonForm = () => {
     CheckBox("");
 
   const [gender, setGender] = useState("");
-  const { value: privacy, bind: bindPrivacy, setValue: setPrivacy } = useInput("");
   const { value: maidenName, bind: bindMaidenName, reset: resetMaidenName, setValue: setMaidenName } =
     useInput("");
+
+  const [trees, setTrees] = useState([]);
+  const [selectedTree, setSelectedTree] = useState("");
 
   const [isUploading, setIsUploading] = useState("");
   const [originalFile, setOriginalFile] = useState("");
 
-  const privacyOpts = ["Admin Only", "Close Family", "Extended Family"];
+  useEffect(() => {
+    if (!loginKey) return;
+
+    apiJson("trees/first", { loginKey, method: "GET" })
+      .then((data) => {
+        console.log("first tree response:", data);
+
+        if (data?.tree) {
+          setTrees([data.tree]);
+          setSelectedTree(String(data.tree.id));
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load first tree:", err);
+      });
+  }, [loginKey, editing]);
 
   function resetForm() {
     resetFirstName();
@@ -198,12 +214,12 @@ const PersonForm = () => {
           .map(p => new Person(p));
         setSelectedListParent(mapParents);
         setSelectedListSpouse(mapSpouse);
-        
+
         const mapChildren = (personEdit.children ?? []).map(p => new Person(p));
         setSelectedListChild(mapChildren);
 
         setIsDeadChecked(!!personEdit.isDead);
-        setPrivacy(privacyOpts[(personEdit.privacy ?? 1) - 1] ?? "");
+        if (personEdit.tree != null) setSelectedTree(String(personEdit.tree));
       } catch (e) {
         if (!cancelled) setErrorPerson(e);
       } finally {
@@ -236,7 +252,6 @@ const PersonForm = () => {
 
       if ((firstName ?? "").trim() === "") alertStr += "First name cannot be blank\n";
       if ((lastName ?? "").trim() === "") alertStr += "Last name cannot be blank\n";
-      if (privacyOpts.indexOf(privacy) === -1) alertStr += "A privacy level must be selected\n";
       if ((gender ?? "") === "") alertStr += "A gender must be selected\n";
 
       if (alertStr) {
@@ -265,7 +280,7 @@ const PersonForm = () => {
         middleName: (middleName ?? "").trim(),
         maidenName: (maidenName ?? "").trim(),
         file: "",
-        privacy: privacyOpts.indexOf(privacy) + 1,
+        tree: selectedTree ? parseInt(selectedTree, 10) : null,
         children: selectedListChildID,
         spouse: selectedListSpouseID?.[0] ?? null
       };
@@ -327,6 +342,23 @@ const PersonForm = () => {
           </div>
 
           <div className="inner-wrap">
+            <div className="select-container">
+              <label htmlFor="tree-select">
+                Family Tree:
+                <select
+                  id="tree-select"
+                  value={selectedTree}
+                  onChange={(e) => setSelectedTree(e.target.value)}
+                  className="box-input"
+                >
+                  <option value="">— No tree —</option>
+                  {trees.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <label htmlFor="person-file">
               Photo:
               <input ref={fileRef} type="file" id="person-file" name="filename" />
@@ -337,7 +369,6 @@ const PersonForm = () => {
             <LabelInputField binding={bindLastName} label={"Last:"} type={"text"} id={"last-name"} />
             <LabelInputField binding={bindMaidenName} label={"Maiden Name:"} type={"text"} id={"maiden-name"} />
 
-            <SelectField binding={bindPrivacy} id={"privacy-select"} label={"Privacy Level"} array={privacyOpts} />
             <ProcessGender gender={gender} setGender={setGender} />
           </div>
 
@@ -365,6 +396,11 @@ const PersonForm = () => {
               setSelectedList={setSelectedListParent}
               loginKey={loginKey}
               maxSelect={2}
+              excludeIds={[
+                editing ? parseInt(id, 10) : null,
+                ...selectedListChild.map((p) => p.id),
+                ...selectedListSpouse.map((p) => p.id),
+              ].filter((x) => x != null)}
             />
             <label>Children</label>
             <PeopleSearch
@@ -372,6 +408,11 @@ const PersonForm = () => {
               setSelectedList={setSelectedListChild}
               loginKey={loginKey}
               maxSelect={null}
+              excludeIds={[
+                editing ? parseInt(id, 10) : null,
+                ...selectedListParent.map((p) => p.id),
+                ...selectedListSpouse.map((p) => p.id),
+              ].filter((x) => x != null)}
             />
             <label>Spouse</label>
             <PeopleSearch
@@ -379,6 +420,11 @@ const PersonForm = () => {
               setSelectedList={setSelectedListSpouse}
               loginKey={loginKey}
               maxSelect={1}
+              excludeIds={[
+                editing ? parseInt(id, 10) : null,
+                ...selectedListParent.map((p) => p.id),
+                ...selectedListChild.map((p) => p.id),
+              ].filter((x) => x != null)}
             />
           </div>
 

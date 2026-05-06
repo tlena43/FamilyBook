@@ -21,23 +21,34 @@ class Upload(BaseModel):
     timestamp = DateTimeField()
 
 
-class Privacy(BaseModel):
-    level = CharField(unique=True)
-    parent = ForeignKeyField("self", null=True, backref="children")
-
-
 class User(BaseModel):
-    privacy = ForeignKeyField(Privacy, backref="users")
     username = CharField(unique=True)
     password = CharField()
+    share_code = CharField(unique=True, null=True)
 
-    def hasPrivacyLevel(self, privacy):
-        while privacy is not None:
-            if self.privacy == privacy:
-                return True
-            privacy = privacy.parent
-        return False
 
+# Family groups + trees (multi-tree per user; access via family group membership):
+
+class FamilyGroup(BaseModel):
+    name = CharField()
+    owner = ForeignKeyField(User, backref="owned_family_groups")
+
+
+class FamilyGroupMember(BaseModel):
+    ROLE_CHOICES = (("owner", "owner"), ("editor", "editor"), ("viewer", "viewer"))
+
+    family_group = ForeignKeyField(FamilyGroup, backref="members")
+    user = ForeignKeyField(User, backref="family_memberships")
+    role = CharField(default="viewer", choices=ROLE_CHOICES)
+
+    class Meta:
+        indexes = ((('family_group', 'user'), True),)
+
+
+class Tree(BaseModel):
+    name = CharField()
+    owner = ForeignKeyField(User, backref="owned_trees")
+    family_group = ForeignKeyField(FamilyGroup, null=True, backref="trees")
 
 
 class Gender(BaseModel):
@@ -45,8 +56,11 @@ class Gender(BaseModel):
 
 
 class Person(BaseModel):
+    user = ForeignKeyField(User, backref="people")
+    # A person belongs to a tree (tree visibility is based on family group membership):
+    tree = ForeignKeyField(Tree, backref="people", null=True)
+
     birthDay = DateField(null=True)
-    privacy = ForeignKeyField(Privacy, backref="people")
     birthDateUnknowns = IntegerField()
     deathDay = DateField(null=True)
     deathDateUnknowns = IntegerField()
@@ -68,8 +82,10 @@ class ContentType(BaseModel):
 
 
 class Content(BaseModel):
+    # Content can be scoped to a tree (and thus a family group) for access.
+    tree = ForeignKeyField(Tree, null=True, backref="content")
+
     user = ForeignKeyField(User, backref="content")
-    privacy = ForeignKeyField(Privacy, backref="content")
     type = ForeignKeyField(ContentType, backref="content", null=True)
     date = DateField(null=True)
     dateUnknowns = IntegerField()
@@ -78,9 +94,11 @@ class Content(BaseModel):
     file = ForeignKeyField(Upload)
     location = CharField(null=True)
 
+
 class Person_Content(BaseModel):
     person = ForeignKeyField(Person, backref="content")
     content = ForeignKeyField(Content, backref="person")
+
 
 class Marriage(BaseModel):
     marriage_date = DateField(null=True)

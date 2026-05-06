@@ -9,6 +9,10 @@
         spouse(PersonId1, PersonId2).
 */
 
+:- dynamic parent/2.
+:- dynamic male/1.
+:- dynamic female/1.
+:- dynamic spouse/2.
 
 /* =========================================================
    Basic parent-child relationships
