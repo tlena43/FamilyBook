@@ -1,6 +1,10 @@
 import { unpackDate } from "./formfunctions.js";
 import { api } from "./global.js";
 
+/*
+An object to store people for ease of access to information
+*/
+
 function getCacheFilename(filename) {
   const fileParts = filename.split(".");
   let cacheFilename = fileParts.slice(0, -1).join(".");

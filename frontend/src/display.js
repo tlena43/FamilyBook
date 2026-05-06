@@ -1,6 +1,10 @@
 import "./index.css";
 import { api } from "./global.js";
 
+/*
+A card to display previews with an image and title
+*/
+
 function ContentCard({ content }) {
   if (!content) return null;
 

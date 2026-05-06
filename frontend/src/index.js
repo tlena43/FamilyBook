@@ -14,6 +14,10 @@ import { faBars } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { AuthProvider, useAuth } from "./authContext.js";
 
+/*
+The main application page with navigation for all other pages
+*/
+
 const LoginPage = lazy(() => import("./login"));
 const SignupPage = lazy(() => import("./signup"));
 const PersonForm = lazy(() => import("./personform"));

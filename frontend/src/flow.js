@@ -5,6 +5,11 @@ import '@xyflow/react/dist/style.css';
 import PersonNode from './PersonNode.js';
 import FamilyJunctionNode from './FamilyJunctionNode.js';
 
+/*
+Use react flow to display the family tree 
+Implement additional family tree features to 
+Show lineage paths and search and qury relationships
+*/
 
 function buildHighlightOverlayEdges(baseEdges, pathEdgeIds) {
   return (baseEdges ?? [])

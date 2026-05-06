@@ -16,6 +16,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "./authContext.js";
 import PeopleSearch from "./peoplepicker.js";
 
+/*
+Create the form that is used to upload content
+*/
+
 
 // api helpers
 export async function uploadFile(file, loginKey) {

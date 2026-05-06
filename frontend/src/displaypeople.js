@@ -4,6 +4,10 @@ import { fetchPeople } from './formfunctions';
 import Search from './search'
 import { useAuth } from "./authContext.js";
 
+/*
+A page to display a searchable list of preview cards of all accessible people
+*/
+
 function ProcessPeople() {
   const { loginKey } = useAuth();
   const [people, setPeople] = useState([]);

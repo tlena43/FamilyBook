@@ -1,3 +1,7 @@
+/*
+helper functions for db access
+*/
+
 export const api = process.env.REACT_APP_API;
 
 export async function apiFetch(path, { loginKey, ...options } = {}) {

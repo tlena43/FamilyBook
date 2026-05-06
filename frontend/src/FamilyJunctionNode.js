@@ -1,6 +1,9 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 
+/*
+An invisible node designed to connect children to parents
+*/
 
 export default function FamilyJunctionNode({ data }) {
     const lineColor = data?.lineColor || 'rgba(0,0,0,0)';

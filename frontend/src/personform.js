@@ -17,6 +17,11 @@ import { apiFetch, apiJson } from "./global.js";
 import { useAuth } from "./authContext.js";
 import PeopleSearch from "./peoplepicker.js";
 
+
+/*
+A form to upload new people
+*/
+
 // api helpers
 export async function uploadFile(file, loginKey) {
   const formData = new FormData();

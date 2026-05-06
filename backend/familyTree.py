@@ -2,7 +2,11 @@ from collections import deque, defaultdict
 from models import Person, FamilyGroupMember
 from flask import g
 
+"""
+The logic to determine the layout and appearance of family trees
+"""
 
+##determines if the user has the right to view person
 def can_view_person(person):
     if not person:
         return False
@@ -19,6 +23,10 @@ def can_view_person(person):
     ).exists()
 
 
+##collects all people who are connected to root person
+##creates a set of parent edges that connect children to parents
+##and a set of spouse edges that connects spouses together
+##return the list of related people and the two lists of edges
 def collect_family(root_person):
     people = {}
     parent_edges = []
@@ -77,6 +85,9 @@ def collect_family(root_person):
     return people, list(set(parent_edges)), list(set(spouse_edges))
 
 
+##assigns a generation number to each person relative to root
+##returns a dictionary with the generation of each person
+##allows for generation alignment in the tree view
 def assign_generations(root_id, people, parent_edges, spouse_edges):
     generation = {root_id: 0}
     queue = deque([root_id])
@@ -118,12 +129,14 @@ def assign_generations(root_id, people, parent_edges, spouse_edges):
     return generation
 
 
+##format birth and death years for family tree cards
 def format_years(person):
     birth = str(person.birthDay.year) if person.birthDay else "?"
     death = str(person.deathDay.year) if getattr(person, "deathDay", None) else ""
     return f"{birth}-{death}" if death else f"{birth}-"
 
 
+##prevents duplicate edges
 def add_edge_once(edge_list, added, edge):
     key = (
         edge["source"],
@@ -138,6 +151,7 @@ def add_edge_once(edge_list, added, edge):
     edge_list.append(edge)
 
 
+##add invisible junction nodes used for child alignment
 def add_junction_node(node_list, added, node_id, x, y, line_color="rgb(0,0,0,0)"):
     if node_id in added:
         return
@@ -157,6 +171,7 @@ def add_junction_node(node_list, added, node_id, x, y, line_color="rgb(0,0,0,0)"
     added.add(node_id)
 
 
+##maps spouse edges to a dictionary
 def build_spouse_map(spouse_edges):
     spouse_map = defaultdict(set)
     for a, b in spouse_edges:
@@ -165,6 +180,10 @@ def build_spouse_map(spouse_edges):
     return spouse_map
 
 
+##groups parents with their children
+##returns a dictionary of single parent family groups
+##and a dictionary of two parent family groups
+##helps ensure children get aligned under parents
 def build_family_groups(people, parent_edges=None):
     two_parent = {}
     single_parent = {}
@@ -194,6 +213,7 @@ def build_family_groups(people, parent_edges=None):
     return two_parent, single_parent
 
 
+##maps parents to their family group
 def build_person_to_own_family(two_parent_families, single_parent_families):
     person_to_family = {}
 
@@ -208,7 +228,7 @@ def build_person_to_own_family(two_parent_families, single_parent_families):
 
     return person_to_family
 
-
+##maps children to their family group
 def build_child_to_birth_family(two_parent_families, single_parent_families):
     child_to_birth_family = {}
 
@@ -225,6 +245,7 @@ def build_child_to_birth_family(two_parent_families, single_parent_families):
     return child_to_birth_family
 
 
+##finds and maps the families at the top of the tree
 def build_root_families(two_parent_families, single_parent_families):
     child_to_birth_family = build_child_to_birth_family(
         two_parent_families, single_parent_families
@@ -243,10 +264,12 @@ def build_root_families(two_parent_families, single_parent_families):
     return roots
 
 
+##return what family a person belongs to 
 def find_family_for_person(person_id, person_to_family):
     return person_to_family.get(person_id)
 
 
+##determines how wide the tree should be based on the width of subtrees
 def compute_family_subtree_width(
     family_key,
     two_parent_families,
@@ -309,6 +332,9 @@ def compute_family_subtree_width(
     return total_width
 
 
+##determines the layout of the family tree
+##recursively positions parents based on the width of their children subtree
+##returns a dictionary of node positions
 def layout_family_subtree(
     family_key,
     x_left,
@@ -413,7 +439,7 @@ def layout_family_subtree(
 
         child_x += width + sibling_gap
 
-
+##starts from root families to determine layout for the entire tree
 def layout_full_tree(
     people,
     generation,
@@ -487,6 +513,7 @@ def layout_full_tree(
     return positions
 
 
+##ensures spouses without kids are placed together
 def snap_spouse_only_people(
     positions,
     people,
@@ -495,13 +522,6 @@ def snap_spouse_only_people(
     node_width=160,
     spouse_gap=40,
 ):
-    """
-    Move spouse-only people next to their spouse after subtree layout.
-
-    This fixes cases like:
-    - Nora + test spouse
-    where Nora is in a parent family but test spouse is not.
-    """
     parent_ids = set()
 
     for p1_id, p2_id in two_parent_families.keys():
@@ -540,6 +560,7 @@ def snap_spouse_only_people(
             continue
 
 
+##ensure root families are centred over their children
 def center_top_families_over_immediate_children(
     positions,
     generation,
@@ -548,10 +569,6 @@ def center_top_families_over_immediate_children(
     node_width=160,
     spouse_gap=40,
 ):
-    """
-    Move only the top-generation parent blocks so they are centered over
-    their immediate children, not over the full width of all descendants.
-    """
     if not generation:
         return
 
@@ -594,6 +611,7 @@ def center_top_families_over_immediate_children(
         positions[parent_id]["x"] = family_center - node_width / 2
 
 
+##distribute the root families evenly across the tree span
 def spread_top_family_blocks(
     positions,
     generation,
@@ -603,10 +621,6 @@ def spread_top_family_blocks(
     spouse_gap=40,
     family_gap=60,
 ):
-    """
-    After centering top families over their immediate children,
-    pack the top-generation family blocks left-to-right so they do not overlap.
-    """
     if not generation:
         return
 

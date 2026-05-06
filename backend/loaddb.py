@@ -2,6 +2,11 @@ from models import *
 import bcrypt
 import os
 
+"""
+Drop existing database and recreate the datavase from scratch
+Initialize values for gender and content types
+"""
+
 try:
 	os.remove("project.db")
 except OSError:

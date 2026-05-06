@@ -1,5 +1,9 @@
 import { createContext, useContext, useState } from "react";
 
+/*
+An object to enforce login state
+*/
+
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {

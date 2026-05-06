@@ -3,6 +3,10 @@ import { api, apiFetch, apiJson } from "./global.js";
 import { useEffect, useState } from "react";
 import { useAuth } from "./authContext.js";
 
+/*
+A page to display and edit family groups
+*/
+
 function Groups({ }) {
     const [ownedGroups, setOwnedGroups] = useState([]);
     const [accessibleGroups, setAccessibleGroups] = useState([]);

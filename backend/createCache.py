@@ -2,6 +2,10 @@ from models import *
 from utilities import *
 from main import *
 
+"""
+Creates the cache for files to streamline subsequent file viewing and improve load time
+"""
+
 db.connect()
 for u in Upload.select():
     fileparts = u.filename.rsplit('.', 1)

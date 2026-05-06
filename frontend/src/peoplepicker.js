@@ -4,6 +4,10 @@ import { apiJson } from "./global.js";
 import { Person } from "./person.js";
 import { fetchPeople } from "./formfunctions.js";
 
+/*
+A componet that builds a selectable list of all accessible people
+*/
+
 
 function SearchList({ filteredPersons, selectedList, setSelectedList, maxSelect, numSelected, setNumSelected }) {
     const filtered = filteredPersons.map((person) => (

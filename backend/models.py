@@ -2,6 +2,11 @@ from peewee import *
 import os
 from dotenv import load_dotenv
 
+"""
+Define the database tables needed for the application 
+"""
+
+
 load_dotenv()
 
 # Always store/read the SQLite DB next to this file (backend/project.db):

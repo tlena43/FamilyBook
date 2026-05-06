@@ -19,6 +19,12 @@ try:
     from pyswip import Prolog
 except Exception:
     Prolog = None
+    
+"""
+Contains all of the setup to run the app
+The API endpoints
+And any necessary backend logic
+"""
 
 
 # =====================================================

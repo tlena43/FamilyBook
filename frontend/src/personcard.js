@@ -2,6 +2,10 @@ import React from "react";
 import "./index.css";
 import { Link } from "react-router-dom";
 
+/*
+A card to display a preview of a person
+*/
+
 
 export default function PersonCard({ person, type }) {
   return (

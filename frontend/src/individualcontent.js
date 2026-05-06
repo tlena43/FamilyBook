@@ -6,6 +6,10 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, apiJson } from "./global.js";
 import { useAuth } from "./authContext.js";
 
+/*
+A page to provide a detailed view of one content item
+*/
+
 const IndividualContent = ({ admin }) => {
   const { loginKey } = useAuth();
   const { id } = useParams();

@@ -1,6 +1,11 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 
+/*
+A node to display people on the family tree
+*/
+
+
 const hiddenHandle = {
   opacity: 0,
 };

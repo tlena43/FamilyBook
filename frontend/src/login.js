@@ -5,6 +5,10 @@ import { apiJson } from "./global.js";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./authContext.js"; 
 
+/*
+A page thzat allows users to log in
+*/
+
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth(); 

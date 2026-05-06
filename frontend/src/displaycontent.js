@@ -4,6 +4,10 @@ import { apiJson } from "./global.js";
 import Search from "./search";
 import { useAuth } from "./authContext.js";
 
+/*
+A page to display a searchable list of preview cards of all accessible content
+*/
+
 async function fetchContentOverview(loginKey) {
   const data = await apiJson("content", {
     loginKey,

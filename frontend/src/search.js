@@ -5,6 +5,11 @@ import { Person } from "./person.js";
 import { api } from "./global.js";
 import PersonCard from "./personcard.js";
 
+/*
+A component that creates searchable lists of cards
+*/
+
+
 // helpers needed for searches
 function ContentCard({ content }) {
   return (

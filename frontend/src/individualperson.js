@@ -6,6 +6,11 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { Person } from "./person.js";
 import { useAuth } from "./authContext.js";
 
+/*
+A page to provide a detailed view of one person
+*/
+
+
 const IndividualPerson = ({ admin }) => {
   const { loginKey } = useAuth();
   const { id } = useParams();

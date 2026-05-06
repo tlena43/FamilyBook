@@ -3,6 +3,10 @@ import "./index.css";
 import { apiJson } from "./global.js";
 import { Person } from "./person.js";
 
+/*
+Helper functions to streamline form functionality
+*/
+
 const monthList = [
   "Unknown","January","February","March","April","May","June",
   "July","August","September","October","November","December",
