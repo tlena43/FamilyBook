@@ -2,8 +2,6 @@
 
 Family Book is a genealogical application that allows users to upload and store information about their family members and important family history documents. Family Book has since been extended to support multiple users, sharing of information between users, and family tree generation. Other users can be given access to view each others family trees and family trees provide the ability to trace relationships, query relationships, and search for relationships.
 
-**Description:** Explore the use of malloc
-
 **Authors:** Helena Thiessen and Gloria Duo
 
 **Last modified date:** 5/5/26
@@ -65,14 +63,19 @@ python seed.py
 #### Create a .env in frontend
 Set the following environment variables
 ```
-
+REACT_APP_SITE_TITLE='<title>'
+REACT_APP_API='<location>'
 ```
 
 #### Create a .env in backend
 Set the following environment variables
 
 ```
-
+user = <db user>
+pass = <db password>
+host = <host>
+port = <port>
+secretKey = <secret key>
 ```
 ---
 ## Run Instructions
