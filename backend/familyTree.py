@@ -531,34 +531,84 @@ def snap_spouse_only_people(
     for parent_id in single_parent_families.keys():
         parent_ids.add(parent_id)
 
+    def overlaps_any(test_id, x, y):
+        for other_id, pos in positions.items():
+            if other_id == test_id:
+                continue
+
+            same_row = abs(pos["y"] - y) < 5
+            overlaps_x = x < pos["x"] + node_width and x + node_width > pos["x"]
+
+            if same_row and overlaps_x:
+                return True
+
+        return False
+
     moved = set()
+    handled_pairs = set()
 
     for pid, person in people.items():
-        if pid in moved:
-            continue
-
         if not person.spouse_id:
             continue
 
         sid = person.spouse_id.id
-        if sid not in people or sid not in positions:
+
+        if sid not in people:
             continue
 
-        # If this person already belongs to a laid-out parent family, leave it alone
-        if pid in parent_ids:
+        if pid not in positions or sid not in positions:
             continue
 
-        # If spouse is part of a laid-out family, snap this person next to them
-        if sid in parent_ids:
-            spouse_x = positions[sid]["x"]
-            spouse_y = positions[sid]["y"]
+        pair_key = tuple(sorted([pid, sid]))
 
-            # default: place spouse-only leaf to the right
-            positions[pid]["x"] = spouse_x + node_width + spouse_gap
-            positions[pid]["y"] = spouse_y
-            moved.add(pid)
+        if pair_key in handled_pairs:
             continue
 
+        handled_pairs.add(pair_key)
+
+        # If both people are already part of laid-out parent families, leave them alone
+        if pid in parent_ids and sid in parent_ids:
+            continue
+
+        # If one spouse is part of a laid-out parent family, keep that spouse fixed
+        if pid in parent_ids and sid not in parent_ids:
+            anchor_id = pid
+            move_id = sid
+        elif sid in parent_ids and pid not in parent_ids:
+            anchor_id = sid
+            move_id = pid
+        else:
+            # If neither spouse has children, keep the person farther right fixed
+            # This prevents long spouse lines across the whole tree
+            if positions[pid]["x"] >= positions[sid]["x"]:
+                anchor_id = pid
+                move_id = sid
+            else:
+                anchor_id = sid
+                move_id = pid
+
+        if move_id in moved:
+            continue
+
+        anchor_x = positions[anchor_id]["x"]
+        anchor_y = positions[anchor_id]["y"]
+
+        right_x = anchor_x + node_width + spouse_gap
+        left_x = anchor_x - node_width - spouse_gap
+
+        # Try right side first, then left side if right side overlaps
+        if not overlaps_any(move_id, right_x, anchor_y):
+            positions[move_id]["x"] = right_x
+            positions[move_id]["y"] = anchor_y
+        elif not overlaps_any(move_id, left_x, anchor_y):
+            positions[move_id]["x"] = left_x
+            positions[move_id]["y"] = anchor_y
+        else:
+            # Last resort: keep it close but move it down slightly to avoid covering another node
+            positions[move_id]["x"] = right_x
+            positions[move_id]["y"] = anchor_y + 40
+
+        moved.add(move_id)
 
 ##ensure root families are centred over their children
 def center_top_families_over_immediate_children(
