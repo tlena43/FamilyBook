@@ -106,17 +106,19 @@ def add_edge_once(edge_list, added, edge):
 def add_junction_node(node_list, added, node_id, x, y, line_color="rgb(0,0,0,0)"):
     if node_id in added:
         return
-    node_list.append({
-        "id": node_id,
-        "type": "familyJunction",
-        "data": {
-            "label": "",
-            "lineColor": line_color,
-        },
-        "position": {"x": x, "y": y},
-        "draggable": False,
-        "selectable": False,
-    })
+    node_list.append(
+        {
+            "id": node_id,
+            "type": "familyJunction",
+            "data": {
+                "label": "",
+                "lineColor": line_color,
+            },
+            "position": {"x": x, "y": y},
+            "draggable": False,
+            "selectable": False,
+        }
+    )
     added.add(node_id)
 
 
@@ -189,7 +191,9 @@ def build_child_to_birth_family(two_parent_families, single_parent_families):
 
 
 def build_root_families(two_parent_families, single_parent_families):
-    child_to_birth_family = build_child_to_birth_family(two_parent_families, single_parent_families)
+    child_to_birth_family = build_child_to_birth_family(
+        two_parent_families, single_parent_families
+    )
     roots = []
 
     for (p1_id, p2_id), child_ids in two_parent_families.items():
@@ -341,7 +345,10 @@ def layout_family_subtree(
             )
             child_entries.append(("family", child_family, child_width))
 
-    children_total_width = sum(entry[2] for entry in child_entries) + max(0, len(child_entries) - 1) * sibling_gap
+    children_total_width = (
+        sum(entry[2] for entry in child_entries)
+        + max(0, len(child_entries) - 1) * sibling_gap
+    )
     child_x = family_center - children_total_width / 2
     child_y = y_top + level_gap
 
@@ -384,7 +391,9 @@ def layout_full_tree(
     sibling_gap=50,
 ):
     positions = {}
-    person_to_family = build_person_to_own_family(two_parent_families, single_parent_families)
+    person_to_family = build_person_to_own_family(
+        two_parent_families, single_parent_families
+    )
     roots = build_root_families(two_parent_families, single_parent_families)
 
     width_cache = {}
@@ -442,6 +451,7 @@ def layout_full_tree(
 
     return positions
 
+
 def snap_spouse_only_people(
     positions,
     people,
@@ -459,7 +469,7 @@ def snap_spouse_only_people(
     """
     parent_ids = set()
 
-    for (p1_id, p2_id) in two_parent_families.keys():
+    for p1_id, p2_id in two_parent_families.keys():
         parent_ids.add(p1_id)
         parent_ids.add(p2_id)
 
@@ -493,7 +503,8 @@ def snap_spouse_only_people(
             positions[pid]["y"] = spouse_y
             moved.add(pid)
             continue
-        
+
+
 def center_top_families_over_immediate_children(
     positions,
     generation,
@@ -520,7 +531,9 @@ def center_top_families_over_immediate_children(
         if not visible_children:
             continue
 
-        child_centers = [positions[cid]["x"] + node_width / 2 for cid in visible_children]
+        child_centers = [
+            positions[cid]["x"] + node_width / 2 for cid in visible_children
+        ]
         family_center = sum(child_centers) / len(child_centers)
 
         total_parent_width = (2 * node_width) + spouse_gap
@@ -538,11 +551,14 @@ def center_top_families_over_immediate_children(
         if not visible_children:
             continue
 
-        child_centers = [positions[cid]["x"] + node_width / 2 for cid in visible_children]
+        child_centers = [
+            positions[cid]["x"] + node_width / 2 for cid in visible_children
+        ]
         family_center = sum(child_centers) / len(child_centers)
 
         positions[parent_id]["x"] = family_center - node_width / 2
-        
+
+
 def spread_top_family_blocks(
     positions,
     generation,
@@ -571,13 +587,15 @@ def spread_top_family_blocks(
         right = max(positions[p1_id]["x"], positions[p2_id]["x"]) + node_width
         center = (left + right) / 2
 
-        blocks.append({
-            "kind": "two",
-            "ids": (p1_id, p2_id),
-            "left": left,
-            "width": right - left,
-            "center": center,
-        })
+        blocks.append(
+            {
+                "kind": "two",
+                "ids": (p1_id, p2_id),
+                "left": left,
+                "width": right - left,
+                "center": center,
+            }
+        )
 
     # single-parent families on top row
     for parent_id, child_ids in single_parent_families.items():
@@ -588,13 +606,15 @@ def spread_top_family_blocks(
         right = left + node_width
         center = (left + right) / 2
 
-        blocks.append({
-            "kind": "one",
-            "ids": (parent_id,),
-            "left": left,
-            "width": right - left,
-            "center": center,
-        })
+        blocks.append(
+            {
+                "kind": "one",
+                "ids": (parent_id,),
+                "left": left,
+                "width": right - left,
+                "center": center,
+            }
+        )
 
     if not blocks:
         return
