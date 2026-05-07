@@ -1,3 +1,5 @@
+# Hardcoded sample family for testing purposes ONLY.
+# In production, this file SHOULD NOT BE USED!!!
 male(john).
 male(paul).
 male(tom).
