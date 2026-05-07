@@ -1065,7 +1065,7 @@ class SearchRelationshipEndpoint(Resource):
         load_prolog_facts(person.tree)
 
         try:
-            solutions = list(prolog_engine.query(f"{relationship}({person_id}, X)"))
+            solutions = list(prolog_engine.query(f"{relationship}(X, {person_id})"))
         except Exception as e:
             abort(400, description=f"Invalid relationship query: {str(e)}")
 
