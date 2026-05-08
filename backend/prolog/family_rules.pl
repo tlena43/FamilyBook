@@ -9,8 +9,8 @@
         spouse(PersonId1, PersonId2).
 */
 
-# Tell Prolog that base facts are asserted at runtime rather than defined statically.
-# This is because we plan on allowing users to update their family tree as they use the program.
+% Tell Prolog that base facts are asserted at runtime rather than defined statically.
+% This is because we plan on allowing users to update their family tree as they use the program.
 :- dynamic parent/2.
 :- dynamic male/1.
 :- dynamic female/1.
@@ -20,22 +20,22 @@
    Basic parent-child relationships
    ========================================================= */
 
-# Mother:
+% Mother:
 mother(Mother, Child) :-
     parent(Mother, Child),
     female(Mother).
 
-# Father:
+% Father:
 father(Father, Child) :-
     parent(Father, Child),
     male(Father).
 
-# Daughter:
+% Daughter:
 daughter(Daughter, Parent) :-
     parent(Parent, Daughter),
     female(Daughter).
 
-# Son:
+% Son:
 son(Son, Parent) :-
     parent(Parent, Son),
     male(Son).
@@ -45,22 +45,22 @@ son(Son, Parent) :-
    Spouse relationships
    ========================================================= */
 
-# Partner:
+% Partner:
 partner(X, Y) :-
     spouse(X, Y),
     X \= Y.
 
-# Partner (the other person since you need two different people to create the partner relationship):
+% Partner (the other person since you need two different people to create the partner relationship):
 partner(X, Y) :-
     spouse(Y, X),
     X \= Y.
 
-# Husband:
+% Husband:
 husband(Husband, Wife) :-
     partner(Husband, Wife),
     male(Husband).
 
-# Wife:
+% Wife:
 wife(Wife, Husband) :-
     partner(Wife, Husband),
     female(Wife).
@@ -70,22 +70,22 @@ wife(Wife, Husband) :-
    Sibling relationships
    ========================================================= */
 
-# (Blood-related) siblings share at least one parent:
+% (Blood-related) siblings share at least one parent:
 shared_parent(X, Y, Parent) :-
     parent(Parent, X),
     parent(Parent, Y),
     X \= Y.
 
-# General siblings:
+% General siblings:
 sibling(X, Y) :-
     shared_parent(X, Y, _).
 
-# Half-siblings:
+% Half-siblings:
 half_sibling(X, Y) :-
-    # Half siblings share exactly one parent:
+    % Half siblings share exactly one parent:
     parent(SharedParent, X),
     parent(SharedParent, Y),
-    # Their other parent must be different:
+    % Their other parent must be different:
     parent(ParentX, X),
     parent(ParentY, Y),
     ParentX \= SharedParent,
@@ -93,7 +93,7 @@ half_sibling(X, Y) :-
     ParentX \= ParentY,
     X \= Y.
 
-# Full siblings:
+% Full siblings:
 full_sibling(X, Y) :-
     parent(Parent1, X),
     parent(Parent1, Y),

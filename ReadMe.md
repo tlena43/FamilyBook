@@ -19,6 +19,7 @@ python 3.11+	: https://www.python.org/downloads/
 sqlite			: https://sqlite.org/download.html
 sass			: https://sass-lang.com/install/
 swi-prolog		: https://www.swi-prolog.org/download/devel
+poppler         : https://pypi.org/project/python-poppler/
 ```
 While the production version is utilizing mySQL, the development version is configured to SQLite for ease of use. 
 
