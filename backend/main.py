@@ -916,6 +916,8 @@ ALLOWED_RELATIONSHIPS = [
     "brother", "sister", "full_brother", "half_brother", "full_sister", "half_sister",
     "grandparent", "grandfather", "grandmother", "grandchild", "grandson", "granddaughter",
     "great_grandparent", "great_grandmother", "great_grandfather",
+    "great_great_grandparent", "great_great_grandmother", "great_great_grandfather",
+    "great_great_great_grandparent",
     "ancestor", "descendant", "pibling", "aunt", "uncle", "niece", "nephew",
     "cousin", "first_cousin", "second_cousin", "third_cousin",
     "parent_in_law", "mother_in_law", "father_in_law",

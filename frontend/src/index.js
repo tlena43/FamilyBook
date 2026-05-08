@@ -26,7 +26,7 @@ const DisplayContent = lazy(() => import("./displaycontent"));
 const DisplayPeople = lazy(() => import("./displaypeople"));
 const IndividualPerson = lazy(() => import("./individualperson"));
 const IndividualContent = lazy(() => import("./individualcontent"));
-const GroupPage = lazy(() => import("./Groups.js"))
+const GroupPage = lazy(() => import("./Groups"))
 //const FamilyTree = lazy(() => import("./familytree"))
 const FamilyTree = lazy(() => import("./flow"));
 

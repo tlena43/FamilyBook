@@ -140,6 +140,9 @@ const PersonForm = () => {
 
   const [trees, setTrees] = useState([]);
   const [selectedTree, setSelectedTree] = useState("");
+  const [familyGroupId, setFamilyGroupId] = useState(null);
+  const [creatingTree, setCreatingTree] = useState(false);
+  const [newTreeName, setNewTreeName] = useState("");
 
   const [isUploading, setIsUploading] = useState("");
   const [originalFile, setOriginalFile] = useState("");
@@ -147,17 +150,17 @@ const PersonForm = () => {
   useEffect(() => {
     if (!loginKey) return;
 
-    apiJson("trees/first", { loginKey, method: "GET" })
+    apiJson("trees", { loginKey, method: "GET" })
       .then((data) => {
-        console.log("first tree response:", data);
-
-        if (data?.tree) {
-          setTrees([data.tree]);
-          setSelectedTree(String(data.tree.id));
+        const allTrees = data?.trees || [];
+        setTrees(allTrees);
+        if (allTrees.length > 0) {
+          setFamilyGroupId(allTrees[0].familyGroupId ?? null);
+          if (!editing) setSelectedTree(String(allTrees[0].id));
         }
       })
       .catch((err) => {
-        console.error("Failed to load first tree:", err);
+        console.error("Failed to load trees:", err);
       });
   }, [loginKey, editing]);
 
@@ -236,6 +239,25 @@ const PersonForm = () => {
       cancelled = true;
     };
   }, [editing, id, loginKey]);
+
+  async function handleCreateTree() {
+    const name = newTreeName.trim();
+    if (!name || !familyGroupId) return;
+    try {
+      const created = await apiJson(`family-groups/${familyGroupId}/trees`, {
+        loginKey,
+        method: "POST",
+        body: { name },
+      });
+      setTrees((prev) => [...prev, created]);
+      setSelectedTree(String(created.id));
+      setCreatingTree(false);
+      setNewTreeName("");
+    } catch (err) {
+      console.error("Failed to create tree:", err);
+      alert("Could not create tree. Please try again.");
+    }
+  }
 
   const handleSubmit = async (evt) => {
     evt.preventDefault();
@@ -348,20 +370,40 @@ const PersonForm = () => {
 
           <div className="inner-wrap">
             <div className="select-container">
-              <label htmlFor="tree-select">
-                Family Tree:
+              <label htmlFor="tree-select">Family Tree:</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <select
                   id="tree-select"
                   value={selectedTree}
                   onChange={(e) => setSelectedTree(e.target.value)}
                   className="box-input"
+                  style={{ flex: 1 }}
                 >
                   <option value="">— No tree —</option>
                   {trees.map((t) => (
                     <option key={t.id} value={String(t.id)}>{t.name}</option>
                   ))}
                 </select>
-              </label>
+                {familyGroupId && !creatingTree && (
+                  <button type="button" onClick={() => setCreatingTree(true)}>
+                    + New
+                  </button>
+                )}
+              </div>
+              {creatingTree && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px" }}>
+                  <input
+                    className="box-input"
+                    type="text"
+                    placeholder="Tree name"
+                    value={newTreeName}
+                    onChange={(e) => setNewTreeName(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button type="button" onClick={handleCreateTree}>Create</button>
+                  <button type="button" onClick={() => { setCreatingTree(false); setNewTreeName(""); }}>Cancel</button>
+                </div>
+              )}
             </div>
 
             <label htmlFor="person-file">

@@ -75,13 +75,14 @@ const IndividualContent = ({ admin }) => {
           admin={admin}
           onDelete={handleDelete}
           deleting={deleting}
+          loginKey={loginKey}
         />
       ) : null}
     </div>
   );
 };
 
-function ContentDisplay({ content, id, admin, onDelete, deleting }) {
+function ContentDisplay({ content, id, admin, onDelete, deleting, loginKey }) {
   const date = unpackDate(new Date(content.date), content.dateUnknowns);
 
   const people = (content.people ?? []).map((person) => (
@@ -102,7 +103,7 @@ function ContentDisplay({ content, id, admin, onDelete, deleting }) {
       <div className="inner-wrap">
         {!fileName ? null : ext === "pdf" ? (
           <div className="pdf-preview">
-            <PDFViewer fileName={fileName} />
+            <PDFViewer fileName={fileName} loginKey={loginKey} />
           </div>
         ) : (
           <img alt="Content" src={api + "upload/" + fileName} />
@@ -156,13 +157,14 @@ function StackedImage({ src, loaded, setLoaded }) {
   );
 }
 
-async function fetchNumPages(fileName) {
+async function fetchNumPages(fileName, loginKey) {
   return apiJson("upload/num_pages/" + fileName, {
+    loginKey,
     method: "GET",
   });
 }
 
-function PDFViewer({ fileName }) {
+function PDFViewer({ fileName, loginKey }) {
   const [numPages, setNumPages] = useState();
   const [pageNumber, setPageNumber] = useState(1);
 
@@ -180,7 +182,7 @@ function PDFViewer({ fileName }) {
         setLoadingNumPages(true);
         setErrorNumPages(null);
 
-        const data = await fetchNumPages(fileName);
+        const data = await fetchNumPages(fileName, loginKey);
         if (cancelled) return;
 
         setNumPages(data?.num_pages);
