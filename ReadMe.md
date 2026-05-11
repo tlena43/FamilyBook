@@ -3,6 +3,7 @@
 Family Book is a genealogical application that allows users to upload and store information about their family members and important family history documents. Family Book has since been extended to support multiple users, sharing of information between users, and family tree generation. Other users can be given access to view each others family trees and family trees provide the ability to trace relationships, query relationships, and search for relationships.
 
 **Authors:** Helena Thiessen and Gloria Duo
+(note: Mizzezkitty and tlena43 are both Helena's accounts)
 
 **Last modified date:** 5/5/26
 
